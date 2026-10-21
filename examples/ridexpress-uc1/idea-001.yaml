@@ -1,0 +1,22 @@
+kind: handoff
+schema_version: "0.1"
+id: idea-001
+type: idea
+project: ridexpress
+title: Users can sign up from the iOS app
+created_by: { actor: human }
+created_at: "2026-10-05T14:00:00Z"
+status: approved
+body:
+  description: >
+    Implement UC-1 User Sign Up end to end: the iOS sign-up screen, the
+    experience API endpoint, and the process/system APIs behind it.
+  goals:
+    - A new user can create an account from the app and receives a verification email
+    - Failures (duplicate email, bad input, Okta down) behave as the edge-condition docs describe
+  constraints:
+    - Use the existing experience API contract (POST /user)
+    - Square customer creation is a separate slice
+  references:
+    - docs/architecture/use-cases/sign-up-edge-conditions.md
+    - mulesoft/IMPLEMENTATION_PLAN.md#uc-1-user-sign-up

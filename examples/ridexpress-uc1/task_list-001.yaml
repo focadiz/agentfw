@@ -1,0 +1,23 @@
+kind: handoff
+schema_version: "0.1"
+id: task_list-001
+type: task_list
+project: ridexpress
+title: UC-1 User Sign Up stories
+created_by: { actor: pm, run_id: run-2026-10-05-002 }
+created_at: "2026-10-05T15:10:00Z"
+parents: [spec-001]
+status: approved
+body:
+  stories:
+    - id: STORY-1
+      title: Register a new account
+      requirement_ids: [REQ-1, REQ-3]
+    - id: STORY-2
+      title: Handle duplicate email and Okta outages
+      requirement_ids: [REQ-2, REQ-4]
+      depends_on: [STORY-1]
+    - id: STORY-3
+      title: Send the verification email
+      requirement_ids: [REQ-5]
+      depends_on: [STORY-1]

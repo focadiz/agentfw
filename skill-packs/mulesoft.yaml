@@ -1,0 +1,75 @@
+kind: skill_pack
+id: mulesoft
+version: 0.1.0
+platform: mulesoft
+description: >
+  Mule 4 API implementation (API-led: experience / process / system),
+  RAML specs, DataWeave and MUnit. Builds with Maven. CloudHub deployment
+  belongs to the DevOps role, not this pack.
+applies_to: [developer, qa, architect]
+
+requirements:
+  os: [macos, linux]
+  binaries:
+    - name: mvn
+      version_cmd: "mvn -v"
+      min_version: "3.9.0"
+      below_version: "3.10"    # mule-maven-plugin 4.7.0 fails on Maven 3.10 (NoSuchMethodError in aether); CI uses 3.9.8
+    - name: java
+      version_cmd: "java -version"
+      min_version: "17"
+      below_version: "18"      # matches CI (Java 17); widen once another version is confirmed to build
+
+instructions: prompts/mulesoft.md   # API-led layering, error handling, property placeholders, naming
+
+variables:
+  api_dir:
+    description: Directory of the Mule app for this task (e.g. user-sign-up-process-api)
+    scope: task
+  spec_glob:
+    description: RAML specs and shared fragments
+    default: "**/*.raml"
+
+knowledge:
+  - id: api-specs
+    type: repo_glob
+    location: "${platform.repo_root}/${pack.spec_glob}"
+  - id: mulesoft-practices
+    type: repo_glob
+    location: "${project.docs_root}/architecture/common-mulesoft-best-practices.md"
+  - id: mule-docs
+    type: vector_index
+    location: mule4-dataweave-munit
+    description: Pre-indexed Mule 4, DataWeave 2 and MUnit docs
+
+tools:
+  - id: mule.build
+    description: Compile and package the Mule app
+    command: "mvn -f ${pack.api_dir}/pom.xml -q -DskipMunitTests package"
+    timeout_seconds: 600
+  - id: mule.test
+    description: Run MUnit tests
+    command: "mvn -f ${pack.api_dir}/pom.xml test"
+    timeout_seconds: 900
+
+verification:
+  - id: build
+    command: "mvn -f ${pack.api_dir}/pom.xml -DskipMunitTests package"
+    blocking: true
+  - id: munit
+    command: "mvn -f ${pack.api_dir}/pom.xml test"
+    blocking: true
+    artifacts: ["${pack.api_dir}/target/site/munit/**"]
+  - id: no-plaintext-secrets
+    description: Secure properties must use ${secure::...}
+    command: "git diff origin/main...HEAD -- '*.yaml' '*.properties'"
+    blocking: true
+    success:
+      output_must_not_match: "(?im)^\\+\\s*[a-z.]*(password|secret|token)[a-z.]*\\s*[:=]\\s*(?!.*secure::)\\S+"
+
+permissions:
+  fs_write: ["${platform.worktree}/${pack.api_dir}/**"]
+  fs_deny: ["**/src/main/resources/*secure*"]
+  commands_allow: [git, mvn, java]
+  network: allowlist
+  network_allowlist: [repository.mulesoft.org, repo.maven.apache.org]

@@ -1,0 +1,77 @@
+kind: role
+id: qa
+version: 0.1.0
+name: QA Engineer
+description: >
+  Independently verifies a pull request. Reruns the pack's checks in a clean
+  checkout of the PR's head commit, then reviews each acceptance criterion.
+  Never edits code; failures go back to the Developer as specific feedback.
+
+model:
+  provider: openrouter
+  id: "<model-id>"          # ideally a different model family than the Developer's, to avoid shared blind spots
+  temperature: 0.1
+  max_output_tokens: 6000
+
+instructions: prompts/qa.md
+
+consumes: [task, pull_request, design]
+produces: [test_report]
+
+tools:
+  - git.checkout
+  - git.diff
+  - fs.read
+  - fs.list
+  - fs.search
+  - github.pr.read
+  - github.pr.comment
+  - rag.search
+  - handoff.read
+  - handoff.write
+  - memory.read
+  - memory.write
+
+knowledge:
+  - id: project-docs
+    type: repo_glob
+    location: "${project.docs_root}/**/*.md"
+    description: Edge conditions are the main source of test ideas
+
+# Load the pack's checks and its tools (to run targeted tests), plus its
+# knowledge. Not its instructions: those are written for the Developer.
+skill_packs:
+  mode: required
+  select_by: task.platform
+  use: [knowledge, tools, verification]
+  run_in: checkout
+
+permissions:
+  fs_read: ["${project.root}/**", "${task.workdir}/**"]
+  fs_write: ["${task.workdir}/**"]   # only its own scratch dir (clean checkout at ${task.checkout})
+  fs_deny:
+    - "**/.env*"
+    - "**/secrets/**"
+    - "**/*.p12"
+    - "**/*.mobileprovision"
+  commands_allow: [git, mvn, java, xcodebuild, xcrun, swift, swiftlint, sf]
+  network: allowlist
+  network_allowlist:
+    - repository.mulesoft.org
+    - repo.maven.apache.org
+    - github.com
+    - api.github.com
+    - swiftpackageindex.com
+  git: { can_push: false, can_merge: false }
+
+gates: []        # the PR merge is the human checkpoint after QA
+
+limits:
+  max_iterations: 30
+  max_tokens_per_task: 250000
+  timeout_minutes: 45
+
+memory:
+  scope: project
+  persist:
+    - Defects that slipped past the checks, so future reviews look for them

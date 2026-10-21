@@ -1,0 +1,72 @@
+kind: role
+id: pm
+version: 0.1.0
+name: Product Manager
+description: >
+  Turns a human's idea into a spec with testable requirements, and breaks it
+  into prioritized stories. Grounds every requirement in the project's docs
+  and backlog. Makes no technology or design decisions.
+
+model:
+  provider: openrouter
+  # Free OpenRouter models with tool calling (checked against openrouter.ai/api/v1/models, 2026-10-05).
+  # Free models are rate-limited; the fallback takes over if the first one errors.
+  id: "nvidia/nemotron-3-ultra-550b-a55b:free"
+  fallback: ["qwen/qwen3.8-27b:free"]
+  temperature: 0.3
+  max_output_tokens: 6000
+
+instructions: prompts/pm.md
+
+consumes: [idea, test_report]     # test_report: to see what shipped and close stories
+produces: [spec, task_list]
+
+tools:
+  - fs.read
+  - fs.list
+  - fs.search
+  - rag.search
+  - github.issue.read
+  - handoff.read
+  - handoff.list
+  - handoff.write
+  - memory.read
+  - memory.write
+  - human.ask
+
+knowledge:
+  - id: project-docs
+    type: repo_glob
+    location: "${project.docs_root}/**/*.md"
+    description: Use cases, edge conditions, entity details
+  - id: project-handoffs
+    type: repo_glob
+    location: "${project.handoffs_dir}/*.yaml"
+    description: Earlier specs and designs, to avoid duplicating or contradicting them
+
+# PM is platform-agnostic: no skill packs.
+
+permissions:
+  fs_read: ["${project.root}/**"]
+  fs_write: []                      # writes only through handoff.write
+  fs_deny: ["**/.env*", "**/secrets/**"]
+  commands_allow: []
+  network: allowlist
+  network_allowlist: [api.github.com]
+  git: { can_push: false, can_merge: false }
+
+gates:
+  - when: before_handoff
+    artifact: spec
+    reason: The spec defines what gets built; the human confirms scope and resolves open questions.
+
+limits:
+  max_iterations: 25
+  max_tokens_per_task: 200000
+  timeout_minutes: 20
+
+memory:
+  scope: project
+  persist:
+    - Scope decisions the human made at the spec gate
+    - Terms and naming the human corrected

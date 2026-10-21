@@ -1,0 +1,60 @@
+kind: project
+id: ridexpress
+name: RideXpress
+description: >
+  Ride-hailing platform. MuleSoft API-led backend (experience / process /
+  system APIs) and an iOS app that consumes the experience API.
+
+root: /Volumes/Storage/workspace/agentic-ai-program/RideXpress
+docs_root: /Volumes/Storage/workspace/agentic-ai-program/RideXpress/docs
+# Kept in the docs repo so specs, designs and decisions are versioned
+# next to the architecture they describe.
+handoffs_dir: /Volumes/Storage/workspace/agentic-ai-program/RideXpress/docs/.framework
+
+repos:
+  mulesoft:
+    path: mulesoft
+    remote: RideXpress/mulesoft
+    default_branch: main        # NOTE: push to main triggers deploy.yaml
+  mobile-app:
+    path: mobile-app
+    remote: RideXpress/mobile-app
+    default_branch: main
+  docs:
+    path: docs
+    remote: RideXpress/docs
+    default_branch: main
+
+platforms:
+  mulesoft:
+    pack: mulesoft
+    deploy_pack: mulesoft-cloudhub
+    repo: mulesoft
+    variables:
+      spec_glob: "*/src/main/resources/api/**/*.raml"
+      deploy_workflow: deploy.yaml
+      health_url: "https://ridexpress-develop-${pack.app}.us-e2.cloudhub.io/api/health"   # TODO: confirm real CloudHub URL pattern
+  ios:
+    pack: ios
+    repo: mobile-app
+    # mobile-app is empty today. Create the Xcode project by hand once
+    # (or with XcodeGen); agents shouldn't generate .pbxproj files.
+    variables:
+      project_path: RideXpress.xcodeproj
+      scheme: RideXpress
+      simulator: "iPhone 16"
+      api_spec_glob: "${project.root}/mulesoft/ridexpress-experience-api/src/main/resources/api/**/*.raml"
+
+roles:
+  - id: pm
+  - id: architect
+  - id: developer
+  - id: qa
+  - id: devops
+    enabled: false          # turn on once the build pipeline is proven
+
+approvers: ["<your-github-handle>"]
+
+budget:
+  max_tokens_per_day: 3000000
+  max_parallel_tasks: 2

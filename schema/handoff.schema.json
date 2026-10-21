@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/framework/schema/handoff.schema.json",
+  "title": "Handoff document",
+  "description": "Every document agents pass to each other. Same envelope for all types; the body depends on type. Stored as <handoffs_dir>/<id>.yaml.",
+  "type": "object",
+  "required": ["kind", "schema_version", "id", "type", "project", "title", "created_by", "created_at", "status", "body"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "handoff" },
+    "schema_version": { "const": "0.1" },
+    "id": {
+      "description": "<type>-<number>, e.g. spec-001, task-014. Unique within the project.",
+      "type": "string",
+      "pattern": "^(idea|spec|task_list|design|adr|task|pull_request|test_report|deploy_request|deploy_report)-[0-9]{3,}$"
+    },
+    "type": { "$ref": "role.schema.json#/$defs/artifactType" },
+    "project": { "$ref": "role.schema.json#/$defs/slug" },
+    "title": { "type": "string" },
+    "created_by": {
+      "type": "object",
+      "required": ["actor"],
+      "additionalProperties": false,
+      "properties": {
+        "actor": { "description": "Role id, or 'human'.", "type": "string" },
+        "pack": { "type": "string" },
+        "run_id": { "description": "Links to logs/traces for observability.", "type": "string" }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "parents": {
+      "description": "Ids of the documents this one was derived from. Gives end-to-end traceability (idea → spec → design → task → PR → test report).",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "status": {
+      "enum": ["draft", "pending_approval", "approved", "rejected", "superseded", "done"]
+    },
+    "approval": {
+      "description": "Filled in by a human when the document passes a gate.",
+      "type": "object",
+      "required": ["by", "at", "decision"],
+      "additionalProperties": false,
+      "properties": {
+        "by": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" },
+        "decision": { "enum": ["approved", "rejected", "changes_requested"] },
+        "comment": { "type": "string" }
+      }
+    },
+    "body": { "type": "object" }
+  },
+
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "idea" } } },           "then": { "properties": { "body": { "$ref": "#/$defs/idea" } } } },
+    { "if": { "properties": { "type": { "const": "spec" } } },           "then": { "properties": { "body": { "$ref": "#/$defs/spec" } } } },
+    { "if": { "properties": { "type": { "const": "task_list" } } },      "then": { "properties": { "body": { "$ref": "#/$defs/task_list" } } } },
+    { "if": { "properties": { "type": { "const": "design" } } },         "then": { "properties": { "body": { "$ref": "#/$defs/design" } } } },
+    { "if": { "properties": { "type": { "const": "adr" } } },            "then": { "properties": { "body": { "$ref": "#/$defs/adr" } } } },
+    { "if": { "properties": { "type": { "const": "task" } } },           "then": { "properties": { "body": { "$ref": "#/$defs/task" } } } },
+    { "if": { "properties": { "type": { "const": "pull_request" } } },   "then": { "properties": { "body": { "$ref": "#/$defs/pull_request" } } } },
+    { "if": { "properties": { "type": { "const": "test_report" } } },    "then": { "properties": { "body": { "$ref": "#/$defs/test_report" } } } },
+    { "if": { "properties": { "type": { "const": "deploy_request" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/deploy_request" } } } },
+    { "if": { "properties": { "type": { "const": "deploy_report" } } },  "then": { "properties": { "body": { "$ref": "#/$defs/deploy_report" } } } }
+  ],
+
+  "$defs": {
+    "reqId": { "type": "string", "pattern": "^REQ-[0-9]+$" },
+    "storyId": { "type": "string", "pattern": "^STORY-[0-9]+$" },
+    "componentId": { "type": "string", "pattern": "^CMP-[0-9]+$" },
+    "ref": {
+      "description": "Pointer to a source: repo path, URL, or handoff id.",
+      "type": "string"
+    },
+
+    "idea": {
+      "description": "Written by a human. The PM's starting point.",
+      "type": "object",
+      "required": ["description"],
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "goals": { "type": "array", "items": { "type": "string" } },
+        "constraints": { "type": "array", "items": { "type": "string" } },
+        "references": { "type": "array", "items": { "$ref": "#/$defs/ref" } }
+      }
+    },
+
+    "spec": {
+      "description": "PM output. What to build and how we'll know it works. No implementation decisions.",
+      "type": "object",
+      "required": ["problem", "requirements"],
+      "additionalProperties": false,
+      "properties": {
+        "problem": { "type": "string" },
+        "users": { "type": "array", "items": { "type": "string" } },
+        "goals": { "type": "array", "items": { "type": "string" } },
+        "non_goals": { "type": "array", "items": { "type": "string" } },
+        "requirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "statement", "priority", "acceptance_criteria"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/reqId" },
+              "statement": { "type": "string" },
+              "priority": { "enum": ["must", "should", "could"] },
+              "acceptance_criteria": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "sources": { "description": "Where this requirement came from, so it can be checked against the docs.", "type": "array", "items": { "$ref": "#/$defs/ref" } }
+            }
+          }
+        },
+        "open_questions": {
+          "description": "Things the PM couldn't resolve from the sources, e.g. conflicting docs. Surfaced to the human at the gate.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "task_list": {
+      "description": "PM output. The spec broken into user-facing stories, in priority order. Platform-free; the Architect turns stories into platform tasks.",
+      "type": "object",
+      "required": ["stories"],
+      "additionalProperties": false,
+      "properties": {
+        "stories": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "requirement_ids"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/storyId" },
+              "title": { "type": "string" },
+              "description": { "type": "string" },
+              "requirement_ids": { "type": "array", "items": { "$ref": "#/$defs/reqId" }, "minItems": 1 },
+              "depends_on": { "type": "array", "items": { "$ref": "#/$defs/storyId" } }
+            }
+          }
+        }
+      }
+    },
+
+    "design": {
+      "description": "Architect output. Components, the interfaces between them, and how every requirement is covered.",
+      "type": "object",
+      "required": ["summary", "components", "requirement_coverage"],
+      "additionalProperties": false,
+      "properties": {
+        "summary": { "type": "string" },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "platform", "repo", "responsibility"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/componentId" },
+              "name": { "type": "string" },
+              "platform": { "type": "string" },
+              "repo": { "type": "string" },
+              "path": { "type": "string" },
+              "layer": { "description": "Free-form, e.g. experience / process / system for MuleSoft, view / view-model for iOS.", "type": "string" },
+              "responsibility": { "type": "string" },
+              "status": { "enum": ["new", "change", "existing"] }
+            }
+          }
+        },
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to", "protocol"],
+            "additionalProperties": false,
+            "properties": {
+              "from": { "$ref": "#/$defs/componentId" },
+              "to": { "$ref": "#/$defs/componentId" },
+              "protocol": { "type": "string" },
+              "operation": { "type": "string", "description": "e.g. POST /users" },
+              "contract": { "$ref": "#/$defs/ref", "description": "RAML/OAS file that defines it." }
+            }
+          }
+        },
+        "requirement_coverage": {
+          "description": "Every must/should requirement in the spec, mapped to the components that satisfy it. The validator flags any requirement left out.",
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/reqId" },
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/componentId" }, "minItems": 1 }
+        },
+        "decisions": { "description": "ADR ids for decisions made in this design.", "type": "array", "items": { "type": "string" } },
+        "risks": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "adr": {
+      "description": "Architect output. One significant decision, with the alternatives that were considered and why they lost (the Tree-of-Thought record).",
+      "type": "object",
+      "required": ["context", "alternatives", "decision", "consequences"],
+      "additionalProperties": false,
+      "properties": {
+        "context": { "type": "string" },
+        "alternatives": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["option", "pros", "cons"],
+            "additionalProperties": false,
+            "properties": {
+              "option": { "type": "string" },
+              "pros": { "type": "array", "items": { "type": "string" } },
+              "cons": { "type": "array", "items": { "type": "string" } },
+              "score": { "description": "Optional 1-10 from the evaluation step.", "type": "number", "minimum": 1, "maximum": 10 }
+            }
+          }
+        },
+        "decision": { "type": "string" },
+        "consequences": { "type": "array", "items": { "type": "string" } },
+        "supersedes": { "type": "string" }
+      }
+    },
+
+    "task": {
+      "description": "Architect output. One unit of work for one Developer on one platform, small enough for one PR.",
+      "type": "object",
+      "required": ["platform", "repo", "story_id", "component_id", "description", "acceptance_criteria", "required_checks"],
+      "additionalProperties": false,
+      "properties": {
+        "platform": { "type": "string", "description": "Selects the skill pack." },
+        "repo": { "type": "string" },
+        "story_id": { "$ref": "#/$defs/storyId" },
+        "requirement_ids": { "type": "array", "items": { "$ref": "#/$defs/reqId" } },
+        "component_id": { "$ref": "#/$defs/componentId" },
+        "description": { "type": "string" },
+        "acceptance_criteria": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "files_hint": { "description": "Where the Architect expects changes. Advisory, not a permission.", "type": "array", "items": { "type": "string" } },
+        "pack_variables": { "description": "Values for the pack's scope=task variables.", "type": "object", "additionalProperties": { "type": "string" } },
+        "required_checks": { "description": "Pack verification ids that must pass for this task to be done.", "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "depends_on": { "type": "array", "items": { "type": "string" } },
+        "attempt": { "description": "Incremented each time QA sends it back.", "type": "integer", "minimum": 1, "default": 1 }
+      }
+    },
+
+    "check_result": {
+      "type": "object",
+      "required": ["check_id", "passed"],
+      "additionalProperties": false,
+      "properties": {
+        "check_id": { "type": "string" },
+        "passed": { "type": "boolean" },
+        "blocking": { "type": "boolean" },
+        "duration_seconds": { "type": "number" },
+        "summary": { "description": "Short excerpt, e.g. the first failing test and its error.", "type": "string" },
+        "artifacts": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "pull_request": {
+      "description": "Developer output.",
+      "type": "object",
+      "required": ["task_id", "url", "branch", "head_commit", "summary", "self_checks"],
+      "additionalProperties": false,
+      "properties": {
+        "task_id": { "type": "string" },
+        "url": { "type": "string" },
+        "branch": { "type": "string" },
+        "head_commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "summary": { "type": "string" },
+        "files_changed": { "type": "array", "items": { "type": "string" } },
+        "self_checks": { "description": "The Developer's own run of the pack checks. QA does not trust these; it reruns.", "type": "array", "items": { "$ref": "#/$defs/check_result" } },
+        "notes_for_reviewer": { "type": "array", "items": { "type": "string" } },
+        "attempt": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "test_report": {
+      "description": "QA output. Deterministic check results plus a criterion-by-criterion review.",
+      "type": "object",
+      "required": ["task_id", "pull_request_id", "tested_commit", "checks", "acceptance", "verdict"],
+      "additionalProperties": false,
+      "properties": {
+        "task_id": { "type": "string" },
+        "pull_request_id": { "type": "string" },
+        "tested_commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "environment": { "type": "object", "additionalProperties": { "type": "string" } },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/check_result" }, "minItems": 1 },
+        "acceptance": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["criterion", "status", "method"],
+            "additionalProperties": false,
+            "properties": {
+              "criterion": { "type": "string" },
+              "status": { "enum": ["pass", "fail", "not_verified"] },
+              "method": {
+                "description": "How it was judged. 'check' = a deterministic check; 'review' = the QA agent's reading of the code, which is weaker evidence.",
+                "enum": ["check", "review"]
+              },
+              "evidence": { "type": "string" }
+            }
+          }
+        },
+        "verdict": {
+          "description": "pass only if every blocking check passed and no criterion failed.",
+          "enum": ["pass", "fail"]
+        },
+        "feedback": { "description": "Specific, actionable notes for the Developer when verdict is fail.", "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "deploy_request": {
+      "description": "DevOps output, written before anything ships. The human approves it (for RideXpress MuleSoft, by merging the PR, since merge to main deploys).",
+      "type": "object",
+      "required": ["environment", "apps", "test_report_ids", "rollback_plan"],
+      "additionalProperties": false,
+      "properties": {
+        "environment": { "type": "string" },
+        "apps": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "test_report_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "pull_request_ids": { "type": "array", "items": { "type": "string" } },
+        "risk": { "enum": ["low", "medium", "high"] },
+        "rollback_plan": { "type": "string" }
+      }
+    },
+
+    "deploy_report": {
+      "description": "DevOps output, after the deployment ran.",
+      "type": "object",
+      "required": ["deploy_request_id", "outcome", "checks"],
+      "additionalProperties": false,
+      "properties": {
+        "deploy_request_id": { "type": "string" },
+        "outcome": { "enum": ["succeeded", "failed", "rolled_back"] },
+        "run_url": { "type": "string" },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/check_result" } },
+        "diagnosis": { "description": "On failure: likely cause from the CI logs, and the proposed fix.", "type": "string" }
+      }
+    }
+  }
+}

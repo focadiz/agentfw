@@ -1,0 +1,88 @@
+kind: role
+id: developer
+version: 0.1.0
+name: Developer
+description: >
+  Implements one task from the task list against the approved design.
+  Platform-specific knowledge, tools and checks come from the skill pack
+  selected by the task's platform.
+
+model:
+  provider: openrouter
+  id: "<model-id>"          # pick per budget; code generation is the heaviest role
+  fallback: ["<cheaper-model-id>"]
+  temperature: 0.2
+  max_output_tokens: 8000
+
+instructions: prompts/developer.md
+
+consumes: [task, design, adr, test_report]   # test_report = QA feedback on a retry
+produces: [pull_request]
+
+tools:
+  - fs.read
+  - fs.list
+  - fs.search
+  - fs.write
+  - git.branch
+  - git.diff
+  - git.commit
+  - git.push
+  - github.pr.create
+  - rag.search
+  - memory.read
+  - memory.write
+  - handoff.read
+  - handoff.write
+  - human.ask
+
+knowledge:
+  - id: project-docs
+    type: repo_glob
+    location: "${project.docs_root}/**/*.md"
+    description: Use cases, edge conditions, entity details
+  - id: project-adrs
+    type: repo_glob
+    location: "${project.handoffs_dir}/adr-*.yaml"
+
+skill_packs:
+  mode: required
+  select_by: task.platform
+  allowed: [mulesoft, ios, salesforce]
+
+# Ceiling: no pack can grant more than this.
+permissions:
+  fs_read: ["${project.root}/**"]
+  fs_write: ["${project.root}/**"]
+  fs_deny:
+    - "**/.env*"
+    - "**/secrets/**"
+    - "**/*.p12"
+    - "**/*.mobileprovision"
+    - "**/*.keystore"
+  commands_allow: [git, mvn, java, xcodebuild, xcrun, swift, swiftlint, sf]
+  network: allowlist
+  network_allowlist:
+    - repository.mulesoft.org
+    - repo.maven.apache.org
+    - github.com
+    - swiftpackageindex.com
+  git:
+    branch_prefix: "agent/dev/"
+    can_push: true
+    can_merge: false        # merging is always a human decision
+
+# The PR itself is the review point, so no extra gate here.
+gates: []
+
+limits:
+  max_iterations: 40
+  max_retries: 3            # after 3 QA rejections, escalate to a human
+  max_tokens_per_task: 400000
+  timeout_minutes: 45
+
+memory:
+  scope: project
+  persist:
+    - Build/test failures and the fix that resolved them
+    - Project conventions discovered in existing code

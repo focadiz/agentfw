@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/framework/schema/role.schema.json",
+  "title": "Role",
+  "description": "An agent role (PM, Architect, Developer, QA, DevOps). Defines the agent's job, model, base tools, knowledge, permission ceiling, approval gates and limits. Platform-specific behavior comes from skill packs.",
+  "type": "object",
+  "required": ["kind", "id", "version", "name", "description", "model", "instructions", "consumes", "produces", "permissions", "limits"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "role" },
+    "id": { "$ref": "#/$defs/slug" },
+    "version": { "$ref": "#/$defs/semver" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+
+    "model": {
+      "description": "LLM settings. Kept per role so cheap models can run simple roles and stronger models the hard ones.",
+      "type": "object",
+      "required": ["provider", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "enum": ["openrouter", "anthropic", "openai", "ollama"] },
+        "id": { "type": "string" },
+        "fallback": { "type": "array", "items": { "type": "string" } },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "max_output_tokens": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "instructions": {
+      "description": "Path to the role's system prompt (Markdown), relative to the role file.",
+      "type": "string"
+    },
+
+    "consumes": {
+      "description": "Handoff document types this role reads.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactType" },
+      "minItems": 1
+    },
+    "produces": {
+      "description": "Handoff document types this role writes.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactType" },
+      "minItems": 1
+    },
+
+    "tools": {
+      "description": "Base tools from the framework's tool registry, available on every task regardless of skill pack.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/toolRef" },
+      "uniqueItems": true
+    },
+
+    "knowledge": {
+      "description": "Retrieval sources available on every task. Skill packs add more.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/knowledgeSource" }
+    },
+
+    "skill_packs": {
+      "description": "How this role uses skill packs. Omit for roles that don't use packs (e.g. PM).",
+      "type": "object",
+      "required": ["mode", "select_by"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "description": "required: a task must have a matching pack or it is rejected. optional: run without one if none matches.",
+          "enum": ["required", "optional"]
+        },
+        "select_by": {
+          "description": "task.platform: load the one pack matching the task's platform (Developer, QA, DevOps). project.platforms: load every pack the project uses (Architect, who designs across platforms).",
+          "enum": ["task.platform", "project.platforms"]
+        },
+        "use": {
+          "description": "Which parts of the pack to load. Omit to load all. E.g. the Architect needs pack knowledge but not build tools.",
+          "type": "array",
+          "items": { "enum": ["instructions", "knowledge", "tools", "verification"] },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "run_in": {
+          "description": "Working directory for pack tools and checks. repo: the platform's repo (Developer edits it in place). checkout: a clean checkout of the PR at ${task.checkout} (QA, so it never tests the Developer's working copy).",
+          "enum": ["repo", "checkout"],
+          "default": "repo"
+        },
+        "allowed": {
+          "description": "Pack ids this role may load. Omit to allow any pack that lists this role in applies_to.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/slug" }
+        }
+      }
+    },
+
+    "permissions": {
+      "description": "Permission CEILING. A skill pack can request permissions, but effective permissions = pack request ∩ this ceiling.",
+      "$ref": "#/$defs/permissions"
+    },
+
+    "gates": {
+      "description": "Points where a human must approve before the pipeline continues.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["when", "artifact"],
+        "additionalProperties": false,
+        "properties": {
+          "when": { "enum": ["before_start", "before_handoff"] },
+          "artifact": { "$ref": "#/$defs/artifactType" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+
+    "limits": {
+      "type": "object",
+      "required": ["max_iterations"],
+      "additionalProperties": false,
+      "properties": {
+        "max_iterations": { "description": "Max reasoning/tool steps per task.", "type": "integer", "minimum": 1 },
+        "max_retries": { "description": "Max times a task can come back from QA before escalating to a human.", "type": "integer", "minimum": 0 },
+        "max_tokens_per_task": { "type": "integer", "minimum": 1 },
+        "timeout_minutes": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "description": "task: forget after each task. project: keep notes across tasks in the same project.",
+          "enum": ["task", "project"]
+        },
+        "persist": {
+          "description": "What the role writes to project memory (e.g. lessons from failed QA runs).",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "semver": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+
+    "artifactType": {
+      "description": "Handoff document types. Formats are defined separately (handoff schemas).",
+      "enum": ["idea", "spec", "task_list", "design", "adr", "task", "pull_request", "test_report", "deploy_request", "deploy_report"]
+    },
+
+    "toolRef": {
+      "description": "Tool registry id, e.g. fs.read, git.commit, github.pr.create, rag.search.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+
+    "knowledgeSource": {
+      "type": "object",
+      "required": ["id", "type", "location"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "type": { "enum": ["repo_glob", "url", "vector_index"] },
+        "location": {
+          "description": "Glob, URL or index name. May use ${project.*} variables.",
+          "type": "string"
+        },
+        "description": { "type": "string" }
+      }
+    },
+
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fs_read": { "type": "array", "items": { "type": "string" }, "description": "Globs." },
+        "fs_write": { "type": "array", "items": { "type": "string" }, "description": "Globs." },
+        "fs_deny": { "type": "array", "items": { "type": "string" }, "description": "Globs that override read/write (secrets, signing)." },
+        "commands_allow": { "type": "array", "items": { "type": "string" }, "description": "Executable names or prefixes." },
+        "network": { "enum": ["none", "allowlist", "any"] },
+        "network_allowlist": { "type": "array", "items": { "type": "string" } },
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "branch_prefix": { "type": "string" },
+            "can_push": { "type": "boolean" },
+            "can_merge": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,106 @@
+kind: skill_pack
+id: ios
+version: 0.1.0
+platform: ios
+description: >
+  Swift/SwiftUI app development with Xcode. Builds and tests on the iOS
+  Simulator. Signing, provisioning and App Store submission are out of scope.
+applies_to: [developer, qa, architect]
+
+requirements:
+  os: [macos]
+  binaries:
+    - name: xcodebuild
+      version_cmd: "xcodebuild -version"
+      min_version: "16.0"
+    - name: xcrun
+    - name: swiftlint      # optional check below; remove if not used
+
+instructions: prompts/ios.md   # Swift style, SwiftUI patterns, async/await networking, no force-unwraps, etc.
+
+variables:
+  project_path:
+    description: Path to the .xcodeproj or .xcworkspace, relative to the repo root
+  scheme:
+    description: Xcode scheme to build and test
+  simulator:
+    description: Simulator device name
+    default: "iPhone 16"
+  api_spec_glob:
+    description: Where the backend API contract lives (the app is built against it)
+
+knowledge:
+  - id: api-contract
+    type: repo_glob
+    location: "${pack.api_spec_glob}"
+    description: Backend API specs (for RideXpress, the experience API RAML)
+  - id: apple-docs
+    type: vector_index
+    location: apple-swiftui-hig
+    description: Pre-indexed SwiftUI docs and Human Interface Guidelines excerpts
+
+tools:
+  - id: ios.build
+    description: Build the app for the simulator
+    command: >-
+      xcodebuild -project ${pack.project_path} -scheme ${pack.scheme}
+      -destination 'platform=iOS Simulator,name=${pack.simulator}' build
+    timeout_seconds: 600
+  - id: ios.test
+    description: Run unit tests, optionally limited to one test class
+    command: >-
+      xcodebuild -project ${pack.project_path} -scheme ${pack.scheme}
+      -destination 'platform=iOS Simulator,name=${pack.simulator}'
+      test ${args.only_testing}
+    args:
+      only_testing:
+        type: string
+        description: "Optional, e.g. -only-testing:AppTests/SignUpViewModelTests"
+        pattern: "^(-only-testing:[A-Za-z0-9_/]+)?$"
+    timeout_seconds: 900
+  - id: ios.screenshot
+    description: Capture the booted simulator's screen
+    command: "xcrun simctl io booted screenshot ${task.workdir}/screenshots/${args.name}.png"
+    args:
+      name:
+        type: string
+        description: Screenshot file name without extension
+        required: true
+        pattern: "^[a-z0-9-]+$"
+    timeout_seconds: 30
+
+verification:
+  - id: build
+    command: >-
+      xcodebuild -project ${pack.project_path} -scheme ${pack.scheme}
+      -destination 'platform=iOS Simulator,name=${pack.simulator}' build
+    blocking: true
+    timeout_seconds: 600
+  - id: unit-tests
+    command: >-
+      xcodebuild -project ${pack.project_path} -scheme ${pack.scheme}
+      -destination 'platform=iOS Simulator,name=${pack.simulator}'
+      -resultBundlePath ${task.workdir}/TestResults.xcresult test
+    blocking: true
+    artifacts: ["${task.workdir}/TestResults.xcresult"]
+    timeout_seconds: 900
+  - id: lint
+    command: "swiftlint lint --strict"
+    blocking: false
+  - id: no-hardcoded-secrets
+    description: Fail if API keys or tokens appear in source
+    command: "git diff origin/main...HEAD"
+    blocking: true
+    success:
+      output_must_not_match: "(?i)(api[_-]?key|secret|bearer)\\s*[:=]\\s*['\"][A-Za-z0-9_\\-]{16,}"
+
+permissions:
+  fs_write:
+    - "${platform.worktree}/Sources/**"
+    - "${platform.worktree}/Tests/**"
+  fs_deny:
+    - "**/*.xcconfig"          # build settings incl. signing identities stay human-managed
+    - "**/*.pbxproj"           # project file edits stay with the human (see prompts/ios.md)
+  commands_allow: [git, xcodebuild, xcrun, swift, swiftlint]
+  network: allowlist
+  network_allowlist: [github.com, swiftpackageindex.com]

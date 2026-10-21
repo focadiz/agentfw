@@ -1,0 +1,53 @@
+kind: handoff
+schema_version: "0.1"
+id: test_report-001
+type: test_report
+project: ridexpress
+title: "QA: pull_request-001 (task-002)"
+created_by: { actor: qa, pack: ios, run_id: run-2026-10-06-002 }
+created_at: "2026-10-06T10:40:00Z"
+parents: [task-002, pull_request-001]
+status: done
+body:
+  task_id: task-002
+  pull_request_id: pull_request-001
+  tested_commit: 3f9c2a1
+  environment: { xcode: "16.4", simulator: "iPhone 16", ios: "18.5" }
+  checks:
+    - { check_id: build, passed: true, blocking: true, duration_seconds: 71 }
+    - { check_id: unit-tests, passed: true, blocking: true, duration_seconds: 108, summary: "9 tests, 0 failures", artifacts: [TestResults.xcresult] }
+    - { check_id: lint, passed: false, blocking: false, summary: "2 violations: line_length in SignUpView.swift:48, :61" }
+    - { check_id: no-hardcoded-secrets, passed: true, blocking: true }
+  acceptance:
+    - criterion: Form collects first name, last name, email and mobile number
+      status: pass
+      method: review
+      evidence: "SignUpView.swift:22-41, four TextFields bound to the view model"
+    - criterion: Invalid email shows the EC-4 message before any request is sent
+      status: pass
+      method: check
+      evidence: test_signUp_withInvalidEmail_showsMessageAndSendsNoRequest
+    - criterion: Invalid phone shows the EC-4 message before any request is sent
+      status: pass
+      method: check
+      evidence: test_signUp_withInvalidPhone_showsMessageAndSendsNoRequest
+    - criterion: A 409 response shows the EC-3 message and a "Go to Login" button
+      status: fail
+      method: review
+      evidence: >
+        test_signUp_whenEmailAlreadyRegistered_showsMessage checks the message
+        only. SignUpView.swift has no "Go to Login" button and the view model
+        exposes no state for it.
+    - criterion: A 503 response shows the EC-5 message
+      status: pass
+      method: check
+      evidence: test_signUp_whenServiceUnavailable_showsMessage
+    - criterion: A 201 response navigates to the verification screen placeholder
+      status: not_verified
+      method: review
+      evidence: "SignUpViewModel sets didRegister = true, but no test asserts navigation and no UI test exists."
+  verdict: fail
+  feedback:
+    - "Add a 'Go to Login' button shown only for the duplicate-email error. Expose it as view-model state (e.g. showLoginPrompt) and assert it in the 409 test."
+    - "Add a test asserting didRegister becomes true on 201, so the navigation criterion can be verified."
+    - "Non-blocking: fix the 2 swiftlint line_length violations in SignUpView.swift."

@@ -1,0 +1,64 @@
+kind: skill_pack
+id: mulesoft-cloudhub
+version: 0.1.0
+platform: mulesoft
+description: >
+  Observes MuleSoft deployments done by the repo's GitHub Actions workflow
+  and health-checks the deployed apps. Does not deploy by itself.
+applies_to: [devops]
+
+requirements:
+  binaries:
+    - name: gh
+      version_cmd: "gh --version"
+    - name: curl
+  env: [GH_TOKEN]
+
+instructions: prompts/mulesoft-cloudhub.md
+
+variables:
+  deploy_workflow:
+    description: Workflow file that deploys on merge to main
+  health_url:
+    description: Health endpoint of the deployed app. Usually built from ${pack.app} in the project config.
+  app:
+    description: Mule app being deployed, e.g. user-sign-up-process-api
+    scope: task
+
+tools:
+  - id: cloudhub.runs
+    description: List recent runs of the deploy workflow
+    command: "gh run list -R ${platform.repo_remote} --workflow ${pack.deploy_workflow} --limit 5 --json databaseId,status,conclusion,headSha,url"
+    timeout_seconds: 30
+  - id: cloudhub.watch
+    description: Wait for a deploy run to finish
+    command: "gh run watch ${args.run_id} -R ${platform.repo_remote} --exit-status"
+    args:
+      run_id:
+        type: string
+        description: Workflow run id
+        required: true
+        pattern: "^[0-9]+$"
+    timeout_seconds: 1800
+  - id: cloudhub.failed_logs
+    description: Show logs of failed steps for a run
+    command: "gh run view ${args.run_id} -R ${platform.repo_remote} --log-failed"
+    args:
+      run_id:
+        type: string
+        description: Workflow run id
+        required: true
+        pattern: "^[0-9]+$"
+    timeout_seconds: 60
+
+verification:
+  - id: health
+    description: Deployed app answers its health endpoint
+    command: "curl -fsS --max-time 15 ${pack.health_url}"
+    blocking: true
+    timeout_seconds: 30
+
+permissions:
+  commands_allow: [gh, curl]
+  network: allowlist
+  network_allowlist: [api.github.com, "*.cloudhub.io"]

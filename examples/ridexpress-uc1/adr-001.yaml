@@ -1,0 +1,50 @@
+kind: handoff
+schema_version: "0.1"
+id: adr-001
+type: adr
+project: ridexpress
+title: Create the Okta user before the database record
+created_by: { actor: architect, run_id: run-2026-10-05-003 }
+created_at: "2026-10-05T15:40:00Z"
+parents: [spec-001]
+status: approved
+body:
+  context: >
+    Sign-up writes to two systems: Okta (identity) and the RideXpress
+    database. REQ-4 requires that an Okta outage leaves no partial user
+    record. REQ-2 requires detecting duplicate emails, which EC-3 says is
+    checked against Okta. IMPLEMENTATION_PLAN.md currently lists the
+    database step before the Okta step.
+  alternatives:
+    - option: "A: Database first, then Okta; delete the database record if Okta fails"
+      pros:
+        - Matches the current order in IMPLEMENTATION_PLAN.md
+      cons:
+        - The most common failure (Okta down, REQ-4) always needs a compensating delete
+        - If the compensating delete also fails, a partial record remains, violating REQ-4
+        - Duplicate check against Okta has to happen before the insert anyway
+      score: 5
+    - option: "B: Check and create in Okta first, then the database; deactivate and delete the Okta user if the database insert fails"
+      pros:
+        - An Okta outage fails before anything is written, so REQ-4 holds with no compensation
+        - Duplicate check (EC-3) and creation hit the same system in sequence
+        - Compensation is only needed for a database failure, which is rarer
+      cons:
+        - Needs a compensating Okta deactivate/delete on database failure
+        - Differs from the documented step order, so IMPLEMENTATION_PLAN.md must be updated
+      score: 8
+    - option: "C: Accept the request and process asynchronously over RabbitMQ"
+      pros:
+        - Absorbs Okta outages with queue retries
+      cons:
+        - The app can't show the duplicate-email or outage messages synchronously (REQ-2, REQ-4)
+        - Adds eventual consistency to a flow where the user waits on screen
+      score: 3
+  decision: >
+    Option B. user-sign-up-process-api checks Okta for the email, creates the
+    Okta user, then inserts the database record. On database failure it
+    deactivates and deletes the Okta user.
+  consequences:
+    - okta-system-api needs GET /users?email=, POST /users and DELETE /users/{id}
+    - IMPLEMENTATION_PLAN.md UC-1 steps 3 and 4 swap order
+    - The compensation path needs its own MUnit test

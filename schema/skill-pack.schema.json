@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/framework/schema/skill-pack.schema.json",
+  "title": "Skill Pack",
+  "description": "Platform knowledge, tools and checks that plug into a role (usually Developer, QA or DevOps) for tasks on one platform.",
+  "type": "object",
+  "required": ["kind", "id", "version", "platform", "description", "applies_to", "instructions", "verification"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "skill_pack" },
+    "id": { "$ref": "role.schema.json#/$defs/slug" },
+    "version": { "$ref": "role.schema.json#/$defs/semver" },
+    "platform": {
+      "description": "Matched against task.platform to select this pack.",
+      "$ref": "role.schema.json#/$defs/slug"
+    },
+    "description": { "type": "string" },
+    "applies_to": {
+      "description": "Role ids that can load this pack.",
+      "type": "array",
+      "items": { "$ref": "role.schema.json#/$defs/slug" },
+      "minItems": 1
+    },
+
+    "requirements": {
+      "description": "Host requirements checked before the pack loads. The task fails fast if any is missing.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "os": { "type": "array", "items": { "enum": ["macos", "linux", "windows"] } },
+        "binaries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "version_cmd": { "type": "string" },
+              "min_version": { "type": "string", "description": "Lowest acceptable version (inclusive)." },
+              "below_version": { "type": "string", "description": "Version must be lower than this, e.g. a tool release that breaks the build." }
+            }
+          }
+        },
+        "env": { "type": "array", "items": { "type": "string" }, "description": "Env var names that must be set (values never stored here)." }
+      }
+    },
+
+    "instructions": {
+      "description": "Path to the pack's prompt additions (Markdown), appended to the role's instructions.",
+      "type": "string"
+    },
+
+    "variables": {
+      "description": "Settings the pack needs, referenced as ${pack.<name>}. scope=project values come from the project config (e.g. Xcode scheme); scope=task values come from each task's pack_variables (e.g. which Mule app to build).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["description"],
+        "additionalProperties": false,
+        "properties": {
+          "description": { "type": "string" },
+          "scope": { "enum": ["project", "task"], "default": "project" },
+          "default": { "type": "string" }
+        }
+      }
+    },
+
+    "knowledge": {
+      "type": "array",
+      "items": { "$ref": "role.schema.json#/$defs/knowledgeSource" }
+    },
+
+    "tools": {
+      "description": "Command tools the pack adds. Each becomes a callable tool for the agent.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "command"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "role.schema.json#/$defs/toolRef" },
+          "description": { "type": "string" },
+          "command": { "type": "string", "description": "Command template, split into arguments like a shell would but never run through one. May use ${pack.*}, ${platform.*}, ${project.*}, ${task.*} and ${args.*}; each ${args.*} fills exactly one argument." },
+          "args": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["type", "description"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "enum": ["string", "integer", "boolean"] },
+                "description": { "type": "string" },
+                "required": { "type": "boolean", "default": false },
+                "pattern": { "type": "string", "description": "Regex the value must match (guards against injection)." }
+              }
+            }
+          },
+          "timeout_seconds": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+
+    "verification": {
+      "description": "Deterministic checks. The Developer runs them before opening a PR; QA reruns them independently and records results in the test report.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "command", "blocking"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "role.schema.json#/$defs/slug" },
+          "description": { "type": "string" },
+          "command": { "type": "string" },
+          "blocking": { "type": "boolean", "description": "If true, a failure sends the task back to the Developer." },
+          "success": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "exit_code": { "type": "integer", "default": 0 },
+              "output_must_not_match": { "type": "string", "description": "Regex; a match counts as failure even with exit code 0." }
+            }
+          },
+          "artifacts": { "type": "array", "items": { "type": "string" }, "description": "Globs to attach to the test report (logs, screenshots, .xcresult)." },
+          "timeout_seconds": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+
+    "permissions": {
+      "description": "Permissions the pack REQUESTS. Effective = this ∩ role ceiling.",
+      "$ref": "role.schema.json#/$defs/permissions"
+    }
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/framework/schema/project.schema.json",
+  "title": "Project",
+  "description": "One solution the agent team works on. Says where its repos and docs live, which platforms it uses (and so which skill packs), which roles are enabled, and who approves.",
+  "type": "object",
+  "required": ["kind", "id", "name", "root", "handoffs_dir", "repos", "platforms", "roles", "approvers"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "project" },
+    "id": { "$ref": "role.schema.json#/$defs/slug" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+
+    "root": {
+      "description": "Absolute path to the folder holding the project's repos. Available as ${project.root}.",
+      "type": "string"
+    },
+    "docs_root": {
+      "description": "Folder with the project's own documentation, indexed for retrieval. Available as ${project.docs_root}.",
+      "type": "string"
+    },
+    "handoffs_dir": {
+      "description": "Where handoff documents are stored, one YAML file per document named <id>.yaml. Should be inside a git repo so every handoff is versioned. Available as ${project.handoffs_dir}.",
+      "type": "string"
+    },
+
+    "repos": {
+      "description": "Git repos in the project, by name. A task's repo sets ${task.repo_root}.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["path", "default_branch"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "description": "Relative to root." },
+          "remote": { "type": "string", "description": "owner/name on GitHub." },
+          "default_branch": { "type": "string" }
+        }
+      }
+    },
+
+    "platforms": {
+      "description": "Platforms the project uses, keyed by platform name (the value tasks put in task.platform).",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["pack", "repo"],
+        "additionalProperties": false,
+        "properties": {
+          "pack": { "$ref": "role.schema.json#/$defs/slug", "description": "Skill pack id for build work." },
+          "deploy_pack": { "$ref": "role.schema.json#/$defs/slug", "description": "Skill pack id DevOps uses for this platform. Omit if deployment stays manual (e.g. App Store)." },
+          "repo": { "type": "string", "description": "Key in repos." },
+          "variables": {
+            "description": "Values for the packs' scope=project variables.",
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "roles": {
+      "description": "Roles enabled for this project, with optional per-project overrides.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "role.schema.json#/$defs/slug" },
+          "enabled": { "type": "boolean", "default": true },
+          "model_id": { "type": "string", "description": "Override the role's model for this project." }
+        }
+      }
+    },
+
+    "approvers": {
+      "description": "GitHub handles allowed to approve gates and merge PRs.",
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_tokens_per_day": { "type": "integer", "minimum": 1 },
+        "max_parallel_tasks": { "type": "integer", "minimum": 1, "default": 2 }
+      }
+    }
+  }
+}

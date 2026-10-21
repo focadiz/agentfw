@@ -1,0 +1,33 @@
+kind: handoff
+schema_version: "0.1"
+id: task-001
+type: task
+project: ridexpress
+title: Implement sign-up orchestration in user-sign-up-process-api
+created_by: { actor: architect, run_id: run-2026-10-05-004 }
+created_at: "2026-10-05T17:45:00Z"
+parents: [design-001, adr-001]
+status: approved
+body:
+  platform: mulesoft
+  repo: mulesoft
+  story_id: STORY-2
+  requirement_ids: [REQ-1, REQ-2, REQ-4]
+  component_id: CMP-2
+  description: >
+    Implement POST /users in user-sign-up-process-api following adr-001:
+    look up the email in okta-system-api, create the Okta user, insert the
+    database record, and compensate on database failure.
+  acceptance_criteria:
+    - Valid request returns 201 with the new user id after Okta and database calls succeed
+    - Existing email (Okta lookup returns a user) returns 409 with the EC-3 message and makes no create calls
+    - Okta 5xx is retried 3 times with exponential backoff, then returns 503 with the EC-5 message
+    - Database insert failure deactivates and deletes the Okta user, then returns 500
+    - transactionId header is propagated on every outbound call
+  files_hint:
+    - user-sign-up-process-api/src/main/mule/
+    - user-sign-up-process-api/src/test/munit/
+  pack_variables:
+    api_dir: user-sign-up-process-api
+  required_checks: [build, munit, no-plaintext-secrets]
+  attempt: 1

@@ -1,0 +1,64 @@
+kind: role
+id: devops
+version: 0.1.0
+name: DevOps Engineer
+description: >
+  Prepares and observes deployments. Writes a deploy request (what ships,
+  where, how to roll back) for the human to approve, watches the CI deploy
+  run, runs post-deploy health checks and diagnoses failures from the logs.
+  Never deploys on its own: for RideXpress MuleSoft the human's merge to main
+  is what triggers the deploy workflow.
+
+model:
+  provider: openrouter
+  id: "<model-id>"
+  temperature: 0.1
+  max_output_tokens: 6000
+
+instructions: prompts/devops.md
+
+consumes: [test_report, pull_request, deploy_report]
+produces: [deploy_request, deploy_report]
+
+tools:
+  - fs.read
+  - fs.search
+  - git.diff
+  - github.pr.read
+  - github.actions.read
+  - github.pr.comment
+  - handoff.read
+  - handoff.list
+  - handoff.write
+  - memory.read
+  - memory.write
+  - human.ask
+
+skill_packs:
+  mode: required
+  select_by: task.platform     # resolved to the platform's deploy_pack in the project config
+  allowed: [mulesoft-cloudhub]
+
+permissions:
+  fs_read: ["${project.root}/**"]
+  fs_write: []
+  fs_deny: ["**/.env*", "**/secrets/**", "**/*.p12", "**/*.mobileprovision"]
+  commands_allow: [gh, curl]
+  network: allowlist
+  network_allowlist: [api.github.com, "*.cloudhub.io"]
+  git: { can_push: false, can_merge: false }
+
+gates:
+  - when: before_handoff
+    artifact: deploy_request
+    reason: Nothing ships without a human approving what, where and the rollback plan.
+
+limits:
+  max_iterations: 30
+  max_tokens_per_task: 200000
+  timeout_minutes: 60          # includes waiting for the CI run
+
+memory:
+  scope: project
+  persist:
+    - CI failure signatures and their root causes

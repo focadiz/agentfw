@@ -1,0 +1,285 @@
+kind: tool_registry
+version: 0.1.0
+
+# There is deliberately no generic shell tool. Agents can only run commands
+# a skill pack defines, with validated arguments.
+
+mcp_servers:
+  github:
+    command: github-mcp-server        # https://github.com/github/github-mcp-server
+    args: [stdio]
+    env: [GITHUB_PERSONAL_ACCESS_TOKEN]
+
+tools:
+  # ---- Files ----------------------------------------------------------------
+  - id: fs.read
+    description: Read a file. Use before editing anything, and to check existing conventions.
+    impl: { builtin: "agentfw.tools.fs:read" }
+    effect: read
+    guarded_by: [fs_read, fs_deny]
+    args:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+        start_line: { type: integer, minimum: 1 }
+        end_line: { type: integer, minimum: 1 }
+
+  - id: fs.list
+    description: List files under a directory, optionally filtered by glob.
+    impl: { builtin: "agentfw.tools.fs:list" }
+    effect: read
+    guarded_by: [fs_read, fs_deny]
+    args:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+        glob: { type: string }
+
+  - id: fs.search
+    description: Search file contents with a regex. Faster than reading files one by one to find where something is defined.
+    impl: { builtin: "agentfw.tools.fs:search" }
+    effect: read
+    guarded_by: [fs_read, fs_deny]
+    args:
+      type: object
+      required: [pattern]
+      properties:
+        pattern: { type: string }
+        path: { type: string }
+        glob: { type: string }
+
+  - id: fs.write
+    description: Create or overwrite a file. Prefer small, focused changes.
+    impl: { builtin: "agentfw.tools.fs:write" }
+    effect: local
+    guarded_by: [fs_write, fs_deny]
+    args:
+      type: object
+      required: [path, content]
+      properties:
+        path: { type: string }
+        content: { type: string }
+
+  # ---- Git (local) ----------------------------------------------------------
+  - id: git.checkout
+    description: Make a clean checkout of a commit at the task's checkout directory. QA uses this so it never tests the Developer's working copy.
+    impl: { builtin: "agentfw.tools.git:checkout" }
+    effect: local
+    guarded_by: [git]          # destination is fixed (${task.checkout}), not chosen by the agent
+    args:
+      type: object
+      required: [commit]
+      properties:
+        commit: { type: string, pattern: "^[0-9a-f]{7,40}$" }
+
+  - id: git.branch
+    description: Create and switch to a branch. Names are forced under the role's branch_prefix.
+    impl: { builtin: "agentfw.tools.git:branch" }
+    effect: local
+    guarded_by: [git]
+    args:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, pattern: "^[a-z0-9][a-z0-9/-]*$" }
+
+  - id: git.diff
+    description: Show changes against the default branch or between commits.
+    impl: { builtin: "agentfw.tools.git:diff" }
+    effect: read
+    guarded_by: [fs_read]
+    args:
+      type: object
+      properties:
+        base: { type: string }
+        head: { type: string }
+
+  - id: git.commit
+    description: Stage the given files and commit. Message should reference the task id.
+    impl: { builtin: "agentfw.tools.git:commit" }
+    effect: local
+    guarded_by: [fs_write, git]
+    args:
+      type: object
+      required: [message, paths]
+      properties:
+        message: { type: string }
+        paths: { type: array, items: { type: string } }
+
+  - id: git.push
+    description: Push the current branch. Refuses the default branch and anything outside branch_prefix.
+    impl: { builtin: "agentfw.tools.git:push" }
+    effect: remote
+    guarded_by: [git, network]
+
+  # ---- GitHub (via MCP) -----------------------------------------------------
+  - id: github.pr.create
+    description: Open a pull request for the current branch. Body must link the task handoff id.
+    impl: { mcp_server: github, mcp_tool: create_pull_request }
+    effect: remote
+    guarded_by: [git, network]
+    args:
+      type: object
+      required: [title, body]
+      properties:
+        title: { type: string }
+        body: { type: string }
+        draft: { type: boolean }
+
+  - id: github.pr.read
+    description: Read a pull request, its diff and its review comments.
+    impl: { mcp_server: github, mcp_tool: get_pull_request }
+    effect: read
+    guarded_by: [network]
+    args:
+      type: object
+      required: [number]
+      properties:
+        number: { type: integer }
+
+  - id: github.pr.comment
+    description: Comment on a pull request (QA posts its verdict here).
+    impl: { mcp_server: github, mcp_tool: add_issue_comment }
+    effect: remote
+    guarded_by: [network]
+    args:
+      type: object
+      required: [number, body]
+      properties:
+        number: { type: integer }
+        body: { type: string }
+
+  - id: github.issue.read
+    description: Read issues, to pull existing backlog and context into a spec.
+    impl: { mcp_server: github, mcp_tool: list_issues }
+    effect: read
+    guarded_by: [network]
+    args:
+      type: object
+      properties:
+        state: { enum: [open, closed, all] }
+        labels: { type: array, items: { type: string } }
+
+  - id: github.actions.read
+    description: Read workflow runs and failed-job logs. DevOps uses this to watch deployments and diagnose failures.
+    impl: { mcp_server: github, mcp_tool: get_job_logs }
+    effect: read
+    guarded_by: [network]
+    args:
+      type: object
+      properties:
+        run_id: { type: integer }
+        failed_only: { type: boolean }
+
+  # ---- Retrieval & memory ---------------------------------------------------
+  - id: rag.search
+    description: >
+      Semantic search over the role's and pack's knowledge sources. Use it
+      before making claims about the project; cite the returned source paths.
+    impl: { builtin: "agentfw.tools.rag:search" }
+    effect: read
+    guarded_by: [fs_read]      # results are limited to files the role may read
+    args:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string }
+        sources: { type: array, items: { type: string }, description: Knowledge source ids; omit for all }
+        k: { type: integer, minimum: 1, maximum: 20, default: 6 }
+        mmr: { type: boolean, default: true, description: Maximal Marginal Relevance, to avoid near-duplicate chunks }
+
+  - id: memory.read
+    description: Read the role's project memory (past lessons, conventions).
+    impl: { builtin: "agentfw.tools.memory:read" }
+    effect: read
+    guarded_by: [none]
+    args:
+      type: object
+      properties:
+        query: { type: string }
+
+  - id: memory.write
+    description: Save a lesson for future tasks, e.g. a build error and what fixed it. Keep entries short and specific.
+    impl: { builtin: "agentfw.tools.memory:write" }
+    effect: local
+    guarded_by: [none]
+    args:
+      type: object
+      required: [note]
+      properties:
+        note: { type: string, maxLength: 1000 }
+        tags: { type: array, items: { type: string } }
+
+  # ---- Handoffs & humans ----------------------------------------------------
+  - id: handoff.read
+    description: Read a handoff document by id.
+    impl: { builtin: "agentfw.tools.handoff:read" }
+    effect: read
+    guarded_by: [none]
+    args:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+
+  - id: handoff.list
+    description: List handoff documents, filtered by type and/or status.
+    impl: { builtin: "agentfw.tools.handoff:list" }
+    effect: read
+    guarded_by: [none]
+    args:
+      type: object
+      properties:
+        type: { type: string }
+        status: { type: string }
+
+  - id: handoff.write
+    description: >
+      Write a handoff document. Give its type, title, parents and body (body
+      format: see "Output formats" in your instructions). The framework fills in
+      id, status, author and timestamp, validates the document, and rejects it
+      with a list of problems if anything is wrong; fix them and call again.
+      To revise your own document before it's approved, include its id.
+    impl: { builtin: "agentfw.tools.handoff:write" }
+    effect: local
+    guarded_by: [none]
+    args:
+      type: object
+      required: [document]
+      properties:
+        document:
+          type: object
+          required: [type, title, body]
+          properties:
+            type: { type: string, description: "Document type, e.g. spec" }
+            title: { type: string }
+            parents: { type: array, items: { type: string }, description: Ids of the documents this one is based on }
+            body: { type: object, description: The type-specific content }
+            id: { type: string, description: Only when revising your own unapproved document }
+
+  - id: human.ask
+    description: >
+      Ask the human a question and pause until they answer. Use when sources
+      conflict or a decision is outside your role; don't guess.
+    impl: { builtin: "agentfw.tools.human:ask" }
+    effect: read
+    guarded_by: [none]
+    args:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string }
+        options: { type: array, items: { type: string } }
+
+  - id: web.fetch
+    description: Fetch a public documentation page. Only hosts in the role's network allowlist.
+    impl: { builtin: "agentfw.tools.web:fetch" }
+    effect: read
+    guarded_by: [network]
+    args:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }

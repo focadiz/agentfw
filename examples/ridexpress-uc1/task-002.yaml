@@ -1,0 +1,33 @@
+kind: handoff
+schema_version: "0.1"
+id: task-002
+type: task
+project: ridexpress
+title: Build the iOS sign-up screen
+created_by: { actor: architect, run_id: run-2026-10-05-004 }
+created_at: "2026-10-05T17:50:00Z"
+parents: [design-001]
+status: approved
+body:
+  platform: ios
+  repo: mobile-app
+  story_id: STORY-1
+  requirement_ids: [REQ-1, REQ-2, REQ-3, REQ-4]
+  component_id: CMP-6
+  description: >
+    SwiftUI sign-up form with a view model and a typed client for POST /user,
+    built against the experience API RAML. Use a stubbed client in tests; the
+    backend isn't deployed yet.
+  acceptance_criteria:
+    - Form collects first name, last name, email and mobile number
+    - 'Invalid email shows "Please enter a valid email address." before any request is sent'
+    - 'Invalid phone shows "Please enter a valid phone number with country code." before any request is sent'
+    - 'A 409 response shows "This email is already registered. Please log in or use a different email." and a "Go to Login" button'
+    - 'A 503 response shows "Registration service is temporarily unavailable. Please try again in a few minutes."'
+    - A 201 response navigates to the verification screen placeholder
+  files_hint:
+    - Sources/Features/SignUp/
+    - Sources/Networking/
+    - Tests/SignUpTests/
+  required_checks: [build, unit-tests, no-hardcoded-secrets]
+  attempt: 1

@@ -1,0 +1,97 @@
+kind: handoff
+schema_version: "0.1"
+id: design-001
+type: design
+project: ridexpress
+title: UC-1 User Sign Up design
+created_by: { actor: architect, run_id: run-2026-10-05-003 }
+created_at: "2026-10-05T16:00:00Z"
+parents: [spec-001, task_list-001, adr-001]
+status: approved
+approval:
+  by: "<your-github-handle>"
+  at: "2026-10-05T17:30:00Z"
+  decision: approved
+body:
+  summary: >
+    The iOS app posts to the experience API's existing POST /user. The
+    experience API validates input and calls user-sign-up-process-api, which
+    checks and creates the user in Okta, inserts the database record, and
+    sends the verification email (order per adr-001).
+  components:
+    - id: CMP-1
+      name: ridexpress-experience-api
+      platform: mulesoft
+      repo: mulesoft
+      path: ridexpress-experience-api
+      layer: experience
+      responsibility: Server-side validation of POST /user; forwards to the process API; maps errors to the API's error format
+      status: change
+    - id: CMP-2
+      name: user-sign-up-process-api
+      platform: mulesoft
+      repo: mulesoft
+      path: user-sign-up-process-api
+      layer: process
+      responsibility: Orchestrates sign-up (Okta check and create, database insert, verification email) with retries and compensation
+      status: change
+    - id: CMP-3
+      name: okta-system-api
+      platform: mulesoft
+      repo: mulesoft
+      path: okta-system-api
+      layer: system
+      responsibility: GET /users?email=, POST /users, DELETE /users/{id}
+      status: change
+    - id: CMP-4
+      name: database-system-api
+      platform: mulesoft
+      repo: mulesoft
+      path: database-system-api
+      layer: system
+      responsibility: POST /users
+      status: change
+    - id: CMP-5
+      name: email-system-api
+      platform: mulesoft
+      repo: mulesoft
+      path: email-system-api
+      layer: system
+      responsibility: POST /emails (verification email)
+      status: change
+    - id: CMP-6
+      name: Sign-up screen
+      platform: ios
+      repo: mobile-app
+      path: Sources/Features/SignUp
+      layer: view / view-model
+      responsibility: Form, client-side validation, error messages, Go to Login action
+      status: new
+    - id: CMP-7
+      name: API client
+      platform: ios
+      repo: mobile-app
+      path: Sources/Networking
+      responsibility: Typed client for the experience API
+      status: new
+  interfaces:
+    - { from: CMP-6, to: CMP-7, protocol: Swift, operation: "signUp(_:)" }
+    - from: CMP-7
+      to: CMP-1
+      protocol: HTTPS/JSON
+      operation: POST /user
+      contract: mulesoft/ridexpress-experience-api/src/main/resources/api/ridexpress-experience-api.raml
+    - { from: CMP-1, to: CMP-2, protocol: HTTPS/JSON, operation: POST /users }
+    - { from: CMP-2, to: CMP-3, protocol: HTTPS/JSON, operation: "GET /users?email=, POST /users, DELETE /users/{id}" }
+    - { from: CMP-2, to: CMP-4, protocol: HTTPS/JSON, operation: POST /users }
+    - { from: CMP-2, to: CMP-5, protocol: HTTPS/JSON, operation: POST /emails }
+  requirement_coverage:
+    REQ-1: [CMP-1, CMP-2, CMP-3, CMP-4, CMP-6, CMP-7]
+    REQ-2: [CMP-2, CMP-3, CMP-6]
+    REQ-3: [CMP-1, CMP-6]
+    REQ-4: [CMP-2, CMP-3, CMP-6]
+    REQ-5: [CMP-2, CMP-5]
+  decisions: [adr-001]
+  risks:
+    - The docs don't specify HTTP status codes for the error cases. Design uses 409 for duplicate email, 400 for validation, 503 for Okta unavailable.
+    - The iOS app is built against the RAML contract with a stubbed client, so it can proceed in parallel with the MuleSoft tasks. Integration testing waits for CMP-1 and CMP-2.

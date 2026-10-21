@@ -1,0 +1,70 @@
+kind: handoff
+schema_version: "0.1"
+id: spec-001
+type: spec
+project: ridexpress
+title: UC-1 User Sign Up (first slice)
+created_by: { actor: pm, run_id: run-2026-10-05-001 }
+created_at: "2026-10-05T14:20:00Z"
+parents: [idea-001]
+status: approved
+approval:
+  by: "<your-github-handle>"
+  at: "2026-10-05T15:02:00Z"
+  decision: approved
+  comment: "Canonical names are the repo folder names: user-sign-up-process-api, POST /emails."
+body:
+  problem: New users have no way to create a RideXpress account from the mobile app.
+  users: [Rider signing up for the first time]
+  goals:
+    - Account created in both the RideXpress database and Okta
+    - Verification code sent by email
+  non_goals:
+    - Verification code resend and cooldown (EC-2), in the next slice
+    - Square customer creation (EC-6), in the payments slice
+    - Driver onboarding
+  requirements:
+    - id: REQ-1
+      statement: A user can register with first name, last name, email and mobile number.
+      priority: must
+      acceptance_criteria:
+        - A valid registration returns success with the new user's id
+        - The user exists in the RideXpress database and in Okta afterwards
+      sources: [mulesoft/IMPLEMENTATION_PLAN.md#uc-1-user-sign-up]
+    - id: REQ-2
+      statement: Registration with an email that is already registered is rejected.
+      priority: must
+      acceptance_criteria:
+        - 'The user sees "This email is already registered. Please log in or use a different email."'
+        - The user is offered a "Go to Login" action
+        - No new records are created
+      sources: [docs/architecture/use-cases/sign-up-edge-conditions.md#ec-3-email-already-registered]
+    - id: REQ-3
+      statement: Email format and phone number are validated in the app and again on the server.
+      priority: must
+      acceptance_criteria:
+        - 'Invalid email shows "Please enter a valid email address."'
+        - 'Invalid phone shows "Please enter a valid phone number with country code."'
+        - The server rejects invalid input even if the app's check is bypassed
+      sources: [docs/architecture/use-cases/sign-up-edge-conditions.md#ec-4-invalid-email-format-or-phone-number]
+    - id: REQ-4
+      statement: If Okta is unavailable, registration is retried and then fails cleanly.
+      priority: must
+      acceptance_criteria:
+        - Up to 3 retries with exponential backoff
+        - 'After the last retry the user sees "Registration service is temporarily unavailable. Please try again in a few minutes."'
+        - No partial user record remains in any system
+      sources: [docs/architecture/use-cases/sign-up-edge-conditions.md#ec-5-okta-service-unavailable-during-registration]
+    - id: REQ-5
+      statement: After registering, the user receives a verification code by email that expires after 10 minutes.
+      priority: should
+      acceptance_criteria:
+        - A verification email is sent on successful registration
+        - The code is rejected after 10 minutes
+      sources: [docs/architecture/use-cases/sign-up-edge-conditions.md#ec-1-email-verification-code-expiration]
+  open_questions:
+    - >
+      The docs call the process API "sign-up-user-process-api" and the email
+      endpoint "POST /emails"; IMPLEMENTATION_PLAN.md and the repo use
+      "user-sign-up-process-api" and "POST /send". Which names are canonical?
+      (Resolved at the gate: repo folder names, POST /emails.)

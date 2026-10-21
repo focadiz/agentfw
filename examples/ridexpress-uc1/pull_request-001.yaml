@@ -1,0 +1,32 @@
+kind: handoff
+schema_version: "0.1"
+id: pull_request-001
+type: pull_request
+project: ridexpress
+title: "task-002: iOS sign-up screen"
+created_by: { actor: developer, pack: ios, run_id: run-2026-10-06-001 }
+created_at: "2026-10-06T10:15:00Z"
+parents: [task-002]
+status: done
+body:
+  task_id: task-002
+  url: https://github.com/RideXpress/mobile-app/pull/1      # illustrative
+  branch: agent/dev/task-002-sign-up-screen
+  head_commit: 3f9c2a1
+  summary: >
+    Adds SignUpView, SignUpViewModel and APIClient.signUp(_:). Request and
+    response types mirror users.user from the RAML. Validation and error
+    mapping covered by unit tests with a stubbed URLProtocol.
+  files_changed:
+    - Sources/Features/SignUp/SignUpView.swift
+    - Sources/Features/SignUp/SignUpViewModel.swift
+    - Sources/Networking/APIClient.swift
+    - Sources/Networking/Models/User.swift
+    - Tests/SignUpTests/SignUpViewModelTests.swift
+  self_checks:
+    - { check_id: build, passed: true, duration_seconds: 74 }
+    - { check_id: unit-tests, passed: true, duration_seconds: 112, summary: "9 tests, 0 failures" }
+    - { check_id: no-hardcoded-secrets, passed: true }
+  notes_for_reviewer:
+    - Base URL is read from Info.plist key API_BASE_URL; the human needs to set it per configuration.
+  attempt: 1

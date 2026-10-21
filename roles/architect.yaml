@@ -1,0 +1,77 @@
+kind: role
+id: architect
+version: 0.1.0
+name: Solutions Architect
+description: >
+  Designs how an approved spec is built across the project's platforms:
+  components, interfaces and contracts. Records significant decisions as ADRs
+  after comparing alternatives, then splits stories into one-PR tasks, each
+  labeled with its platform.
+
+model:
+  provider: openrouter
+  id: "<model-id>"          # strongest reasoning model you can afford; design errors are the costliest
+  temperature: 0.4          # some diversity helps when generating alternatives
+  max_output_tokens: 10000
+
+instructions: prompts/architect.md
+
+consumes: [spec, task_list, adr, design, test_report]   # test_report: replan when QA finds a design flaw
+produces: [design, adr, task]
+
+tools:
+  - fs.read
+  - fs.list
+  - fs.search
+  - rag.search
+  - web.fetch
+  - handoff.read
+  - handoff.list
+  - handoff.write
+  - memory.read
+  - memory.write
+  - human.ask
+
+knowledge:
+  - id: project-docs
+    type: repo_glob
+    location: "${project.docs_root}/**/*.md"
+  - id: project-adrs
+    type: repo_glob
+    location: "${project.handoffs_dir}/adr-*.yaml"
+
+# Load every platform pack's knowledge (API specs, platform docs) but not
+# their build tools or checks.
+skill_packs:
+  mode: optional
+  select_by: project.platforms
+  use: [knowledge]
+
+permissions:
+  fs_read: ["${project.root}/**"]
+  fs_write: []
+  fs_deny: ["**/.env*", "**/secrets/**"]
+  commands_allow: []
+  network: allowlist
+  network_allowlist:
+    - docs.mulesoft.com
+    - developer.apple.com
+    - developer.salesforce.com
+  git: { can_push: false, can_merge: false }
+
+gates:
+  - when: before_handoff
+    artifact: design
+    reason: The human reviews the design and its task breakdown before any code is written.
+
+limits:
+  max_iterations: 40
+  max_retries: 2
+  max_tokens_per_task: 400000
+  timeout_minutes: 30
+
+memory:
+  scope: project
+  persist:
+    - Design decisions the human overrode at the gate, and why
+    - Tasks that turned out too large for one PR

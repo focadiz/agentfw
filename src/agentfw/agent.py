@@ -49,7 +49,8 @@ CLEARED_NOTE = "[older tool result cleared to save tokens; run the tool again if
 WRAP_UP_AT = 0.8
 WRAP_UP_CALLS_LEFT = 3
 WRAP_UP = ("You are close to this run's limit. Stop researching and write your output document(s) now "
-           "with handoff_write, using what you have; record anything unresolved in the document.")
+           "with handoff_write, using what you have; record anything unresolved in the document. "
+           "From now on only the handoff tools are available.")
 
 
 @dataclass
@@ -106,6 +107,16 @@ class LimitsMiddleware(AgentMiddleware):
             self.warned = True
             return {"messages": [HumanMessage(WRAP_UP)]}
         return None
+
+    def wrap_model_call(self, request, handler):
+        # A warning alone gets ignored; after it, writing is the only thing left to do.
+        if self.warned:
+            request = request.override(tools=[t for t in request.tools if _tool_name(t).startswith("handoff_")])
+        return handler(request)
+
+
+def _tool_name(tool) -> str:
+    return tool.get("name", "") if isinstance(tool, dict) else getattr(tool, "name", "")
 
 
 def run_role(
@@ -260,6 +271,8 @@ def _describe(m, on_event) -> None:
     elif isinstance(m, ToolMessage):
         text = str(m.content).splitlines()[0][:160] if m.content else ""
         on_event(f"  ← {text}")
+    elif isinstance(m, HumanMessage) and m.content == WRAP_UP:
+        on_event("wrap-up: near the limit; only handoff tools from here")
 
 
 def _missing(store: HandoffStore, outputs: list[str], expect: Sequence[str] | None) -> list[str]:

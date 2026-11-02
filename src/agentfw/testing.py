@@ -24,6 +24,7 @@ def tool_call(name: str, **args: Any) -> AIMessage:
 class ScriptedModel(BaseChatModel):
     script: list[Any] = Field(default_factory=list)       # AIMessage | Callable[[list[BaseMessage]], AIMessage]
     seen: list[list[BaseMessage]] = Field(default_factory=list)
+    tool_sets: list[list[str]] = Field(default_factory=list)  # tool names bound for each call
     when_done: str = "Done."
 
     @property
@@ -31,6 +32,7 @@ class ScriptedModel(BaseChatModel):
         return "scripted"
 
     def bind_tools(self, tools, **kwargs):
+        self.tool_sets.append([t.get("name", "") if isinstance(t, dict) else getattr(t, "name", "") for t in tools])
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:

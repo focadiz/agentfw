@@ -247,3 +247,5 @@ def test_agent_is_told_to_wrap_up_before_the_limit(ws_copy, tmp_path):
     result = run_role(ws, "ridexpress", "pm", inputs=["idea-001"], model=model, handoffs=store, expect=["spec"])
     assert result.ok and result.model_calls == 5
     assert sum(isinstance(m, HumanMessage) and m.content == WRAP_UP for m in model.seen[-1]) == 1   # only once
+    assert "rag_search" in model.tool_sets[0]
+    assert model.tool_sets[3] and all(t.startswith("handoff_") for t in model.tool_sets[3])        # after the warning

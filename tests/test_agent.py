@@ -5,7 +5,7 @@ import pytest
 import yaml
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agentfw.agent import run_role, system_prompt
+from agentfw.agent import CLEARED_NOTE, WRAP_UP, run_role, system_prompt
 from agentfw.config import load_workspace
 from agentfw.handoffs import HandoffError, HandoffStore
 from agentfw.models import ModelConfigError, make_model
@@ -201,3 +201,49 @@ def test_cli_handoffs_import_list_show(ws, tmp_path, capsys):
     assert "idea-001" in capsys.readouterr().out
     assert main(["handoffs", "ridexpress", "show", "idea-001", "--handoffs-dir", str(d)]) == 0
     assert "Users can sign up from the iOS app" in capsys.readouterr().out
+
+
+def test_only_transient_model_errors_are_retried():
+    from agentfw.models import is_transient
+
+    class Status(Exception):
+        def __init__(self, code):
+            self.status_code = code
+
+    class APITimeoutError(Exception):
+        pass
+
+    assert is_transient(Status(429)) and is_transient(Status(503)) and is_transient(APITimeoutError())
+    assert not is_transient(Status(404)) and not is_transient(Status(401)) and not is_transient(ValueError())
+
+
+def test_older_tool_results_are_cleared_from_what_the_model_sees(ws, store, example, monkeypatch):
+    monkeypatch.setattr("agentfw.agent.CONTEXT_TRIGGER_TOKENS", 1)
+    monkeypatch.setattr("agentfw.agent.KEEP_TOOL_RESULTS", 1)
+    model = ScriptedModel(script=[
+        tool_call("handoff_list"), tool_call("handoff_list"), tool_call("handoff_list"),
+        AIMessage("Done."),
+    ])
+    run_role(ws, "ridexpress", "pm", inputs=["idea-001"], model=model, handoffs=store)
+    results = [m.content for m in model.seen[-1] if isinstance(m, ToolMessage)]
+    assert results[:2] == [CLEARED_NOTE, CLEARED_NOTE]
+    assert "idea-001" in results[2]                                               # newest kept
+
+
+def test_agent_is_told_to_wrap_up_before_the_limit(ws_copy, tmp_path):
+    root, edit = ws_copy
+    edit("roles/pm.yaml", "  max_iterations: 25", "  max_iterations: 6")      # warned once 3 calls are left
+    ws = load_workspace(root)
+    store = HandoffStore(ws, "ridexpress", tmp_path / "h3")
+    store.put(yaml.safe_load((root / "examples/ridexpress-uc1/idea-001.yaml").read_text()))
+    example = {"spec-001": yaml.safe_load((root / "examples/ridexpress-uc1/spec-001.yaml").read_text())}
+
+    def write_when_told(messages):
+        assert isinstance(messages[-1], HumanMessage) and messages[-1].content == WRAP_UP
+        return write_spec(example)
+
+    model = ScriptedModel(script=[tool_call("rag_search", query=f"q{i}") for i in range(3)] +
+                          [write_when_told, AIMessage("Wrote spec-001.")])
+    result = run_role(ws, "ridexpress", "pm", inputs=["idea-001"], model=model, handoffs=store, expect=["spec"])
+    assert result.ok and result.model_calls == 5
+    assert sum(isinstance(m, HumanMessage) and m.content == WRAP_UP for m in model.seen[-1]) == 1   # only once

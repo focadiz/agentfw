@@ -62,6 +62,18 @@ def make_model(cfg: Mapping[str, Any], model_id: str | None = None) -> BaseChatM
     raise ModelConfigError(f"unknown provider {provider!r}")
 
 
+def is_transient(error: Exception) -> bool:
+    """Worth retrying the same model: rate limits, timeouts, provider 5xx.
+
+    Free OpenRouter models are often "temporarily rate-limited upstream" (429).
+    A 404 (model withdrawn) or 401 is not transient; that goes to the fallback.
+    """
+    status = getattr(error, "status_code", None)
+    if status is not None:
+        return status in (408, 429) or status >= 500
+    return type(error).__name__ in ("APIConnectionError", "APITimeoutError")
+
+
 def make_fallbacks(cfg: Mapping[str, Any]) -> list[BaseChatModel]:
     """Fallback models from the role's fallback list, skipping placeholders."""
     return [make_model(cfg, m) for m in cfg.get("fallback", []) if m and not m.startswith("<")]

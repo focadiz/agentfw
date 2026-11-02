@@ -20,19 +20,36 @@ from datetime import date
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import AgentMiddleware, ModelFallbackMiddleware, hook_config
+from langchain.agents.middleware import (
+    AgentMiddleware, ClearToolUsesEdit, ContextEditingMiddleware, ModelFallbackMiddleware, ModelRetryMiddleware,
+    hook_config,
+)
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from .config import Workspace
 from .handoffs import HandoffStore, dump
-from .models import make_fallbacks, make_model
+from .models import is_transient, make_fallbacks, make_model
 from .resolver import Resolved, resolve
 from .tools import build_toolset
 from .tools.audit import AuditLog
 from .tools.requirements import ensure_requirements
 
 REMINDERS = 1
+
+# Every tool result is re-sent on every later model call, so a long run's cost grows
+# with the square of its steps. Past this many context tokens, older tool results are
+# replaced by a note (the run's state keeps them; only what the model sees shrinks).
+CONTEXT_TRIGGER_TOKENS = 30_000      # 15k with keep=3 made the PM re-read cleared files in a loop
+KEEP_TOOL_RESULTS = 4
+CLEARED_NOTE = "[older tool result cleared to save tokens; run the tool again if you need its exact text]"
+
+# Share of the token budget (or all but this many model calls) after which the agent is
+# told once to stop researching and write, so a run doesn't end with nothing written.
+WRAP_UP_AT = 0.8
+WRAP_UP_CALLS_LEFT = 3
+WRAP_UP = ("You are close to this run's limit. Stop researching and write your output document(s) now "
+           "with handoff_write, using what you have; record anything unresolved in the document.")
 
 
 @dataclass
@@ -67,6 +84,7 @@ class LimitsMiddleware(AgentMiddleware):
         self.deadline = time.monotonic() + timeout_minutes * 60 if timeout_minutes else None
         self.calls = 0
         self.stopped: str | None = None
+        self.warned = False
 
     def after_model(self, state, runtime) -> None:
         self.calls += 1
@@ -83,6 +101,10 @@ class LimitsMiddleware(AgentMiddleware):
         if self.deadline and time.monotonic() > self.deadline:
             self.stopped = "timeout"
             return {"jump_to": "end", "messages": [AIMessage("Stopped: the role's time limit was reached.")]}
+        near = self.calls >= self.max_calls - WRAP_UP_CALLS_LEFT or (self.max_tokens and used >= self.max_tokens * WRAP_UP_AT)
+        if near and not self.warned:
+            self.warned = True
+            return {"messages": [HumanMessage(WRAP_UP)]}
         return None
 
 
@@ -114,9 +136,16 @@ def run_role(
     toolset = build_toolset(resolved, audit=audit, handoffs=store, human=human)
     limits = resolved.limits
     budget = LimitsMiddleware(limits["max_iterations"], limits.get("max_tokens_per_task"), limits.get("timeout_minutes"))
-    middleware: list[AgentMiddleware] = [budget]
+    middleware: list[AgentMiddleware] = [budget, ContextEditingMiddleware(edits=[ClearToolUsesEdit(
+        trigger=CONTEXT_TRIGGER_TOKENS, keep=KEEP_TOOL_RESULTS, placeholder=CLEARED_NOTE,
+        exclude_tools=("handoff_write", "human_ask"),         # rejections and human answers stay visible
+    )])]
     if fallbacks:
         middleware.append(ModelFallbackMiddleware(*fallbacks))
+    if not model:
+        # Inside the fallback, so each model gets its own retries before the next one is tried.
+        middleware.append(ModelRetryMiddleware(max_retries=4, retry_on=is_transient, on_failure="error",
+                                               initial_delay=5.0, max_delay=60.0))
 
     agent = create_agent(llm, toolset.tools, system_prompt=system_prompt(ws, resolved, store), middleware=middleware)
     model_name = type(model).__name__ if model else f"{resolved.model['provider']}/{model_id or resolved.model['id']}"
@@ -207,7 +236,9 @@ def _inline_refs(schema: Any, defs: dict) -> Any:
 
 def _stream(agent, messages: list, max_iterations: int, on_event) -> list:
     final_state = None
-    config = {"recursion_limit": max_iterations * 2 + 10}
+    # Each model call is 4 graph steps (before_model, model, after_model, tools), so the
+    # role's own iteration limit, which stops cleanly, is always reached first.
+    config = {"recursion_limit": max_iterations * 4 + 10}
     for mode, chunk in agent.stream({"messages": messages}, config=config, stream_mode=["updates", "values"]):
         if mode == "values":
             final_state = chunk

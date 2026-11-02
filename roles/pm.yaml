@@ -9,10 +9,11 @@ description: >
 
 model:
   provider: openrouter
-  # Free OpenRouter models with tool calling (checked against openrouter.ai/api/v1/models, 2026-11-01).
-  # Free models are rate-limited; the fallback takes over if the first one errors.
-  id: "nvidia/nemotron-3-ultra-550b-a55b:free"
-  fallback: ["google/gemma-4-31b-it:free"]
+  # Paid Nemotron for reliable runs (~$0.60/M input, about $0.25 per PM run); the free
+  # tiers kept returning upstream 429s mid-run. Free models are the fallback.
+  # Checked against openrouter.ai/api/v1/models, 2026-11-01.
+  id: "nvidia/nemotron-3-ultra-550b-a55b"
+  fallback: ["nvidia/nemotron-3-ultra-550b-a55b:free", "google/gemma-4-31b-it:free"]
   temperature: 0.3
   max_output_tokens: 6000
 

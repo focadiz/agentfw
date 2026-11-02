@@ -53,7 +53,7 @@ def list(ctx, path: str, glob: str | None = None) -> str:   # noqa: A001 - tool 
     for p in sorted(root.rglob(pattern) if "**" in pattern or "/" in pattern else root.glob(pattern)):
         if SKIP_DIRS & set(p.relative_to(root).parts):
             continue
-        if not _readable(ctx, p):
+        if not _readable(ctx, p) or (p.is_dir() and not _has_readable_file(ctx, p)):
             hidden += 1
             continue
         entries.append(str(p.relative_to(root)) + ("/" if p.is_dir() else ""))
@@ -99,6 +99,20 @@ def write(ctx, path: str, content: str) -> str:
     existed = p.exists()
     p.write_text(content)
     return f"{'Updated' if existed else 'Created'} {p} ({len(content.encode())} bytes)"
+
+
+def _has_readable_file(ctx, directory, limit: int = 5000) -> bool:
+    """A directory is only worth showing if the role can read something in it.
+    Without this, a role limited to '*.md' could wander folders of code it can't open.
+    Gives up (and shows the directory) after `limit` entries."""
+    for n, f in enumerate(directory.rglob("*")):
+        if n >= limit:
+            return True
+        if SKIP_DIRS & set(f.relative_to(directory).parts):
+            continue
+        if f.is_file() and _readable(ctx, f):
+            return True
+    return False
 
 
 def _readable(ctx, p) -> bool:

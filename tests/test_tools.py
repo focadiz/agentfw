@@ -294,6 +294,8 @@ def test_markdown_only_role_can_search_folders_but_sees_only_markdown(sandbox):
     assert found == "docs/notes.md:1: TODO in docs"                              # app.txt skipped, no denial
     assert ts.get("fs.list").invoke({"path": str(root / "src")}).endswith("(1 entries hidden: not readable by this role)")
     assert ts.get("fs.read").invoke({"path": "src/app.txt"}).startswith("Denied:")
+    listing = ts.get("fs.list").invoke({"path": str(root)})
+    assert "docs/" in listing and "src/" not in listing                          # nothing readable in src/
 
 
 def test_invalid_arguments_come_back_as_errors(tools):

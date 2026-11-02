@@ -9,10 +9,10 @@ description: >
 
 model:
   provider: openrouter
-  # Free OpenRouter models with tool calling (checked against openrouter.ai/api/v1/models, 2026-10-05).
+  # Free OpenRouter models with tool calling (checked against openrouter.ai/api/v1/models, 2026-11-01).
   # Free models are rate-limited; the fallback takes over if the first one errors.
   id: "nvidia/nemotron-3-ultra-550b-a55b:free"
-  fallback: ["qwen/qwen3.8-27b:free"]
+  fallback: ["google/gemma-4-31b-it:free"]
   temperature: 0.3
   max_output_tokens: 6000
 
@@ -47,7 +47,9 @@ knowledge:
 # PM is platform-agnostic: no skill packs.
 
 permissions:
-  fs_read: ["${project.root}/**"]
+  # Prose only (docs, plans, READMEs). Code and API specs are design input, and
+  # reading them blew the token budget in the first real runs.
+  fs_read: ["${project.root}/*.md", "${project.root}/**/*.md"]
   fs_write: []                      # writes only through handoff.write
   fs_deny: ["**/.env*", "**/secrets/**"]
   commands_allow: []
@@ -62,7 +64,7 @@ gates:
 
 limits:
   max_iterations: 25
-  max_tokens_per_task: 200000
+  max_tokens_per_task: 400000      # cumulative input across calls; a grounded spec took ~12+ calls in the first runs
   timeout_minutes: 20
 
 memory:

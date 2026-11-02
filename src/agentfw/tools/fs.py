@@ -11,7 +11,7 @@ import re
 from .guard import ToolInputError
 
 MAX_READ_BYTES = 400_000
-MAX_READ_CHARS = 60_000
+MAX_READ_CHARS = 20_000      # ~5k tokens; every read is re-sent on each later model call
 MAX_LIST_ENTRIES = 500
 MAX_SEARCH_MATCHES = 200
 MAX_SEARCH_FILE_BYTES = 1_000_000
@@ -27,10 +27,21 @@ def read(ctx, path: str, start_line: int | None = None, end_line: int | None = N
     lines = p.read_text(errors="replace").splitlines()
     start = max(start_line or 1, 1)
     end = min(end_line or len(lines), len(lines))
-    numbered = "\n".join(f"{n:>5}  {lines[n - 1]}" for n in range(start, end + 1))
-    if len(numbered) > MAX_READ_CHARS:
-        numbered = numbered[:MAX_READ_CHARS] + "\n... [truncated; use start_line/end_line]"
-    return f"{p} (lines {start}-{end} of {len(lines)})\n{numbered}"
+    # Cut at a whole line and report the range actually returned, so the model
+    # knows the rest exists and where to resume. Always return at least one line.
+    out, size, last = [], 0, start - 1
+    for n in range(start, end + 1):
+        row = f"{n:>5}  {lines[n - 1]}"
+        if out and size + len(row) + 1 > MAX_READ_CHARS:
+            break
+        out.append(row[:MAX_READ_CHARS])
+        size += len(row) + 1
+        last = n
+    header = f"{p} (lines {start}-{last} of {len(lines)})"
+    if last < end:
+        out.append(f"... [stopped at {MAX_READ_CHARS} characters; continue with start_line={last + 1}, "
+                   "or search for the part you need]")
+    return header + "\n" + "\n".join(out)
 
 
 def list(ctx, path: str, glob: str | None = None) -> str:   # noqa: A001 - tool name
@@ -93,4 +104,5 @@ def write(ctx, path: str, content: str) -> str:
 def _readable(ctx, p) -> bool:
     """Readable as written and after following symlinks."""
     perms = ctx.resolved.permissions
-    return perms.can_read(p) and perms.can_read(os.path.realpath(p))
+    d = os.path.isdir(p)
+    return perms.can_read(p, directory=d) and perms.can_read(os.path.realpath(p), directory=d)

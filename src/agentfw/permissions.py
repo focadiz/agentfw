@@ -63,13 +63,13 @@ class Permissions:
 
     # ---- Checks -----------------------------------------------------------
 
-    def can_read(self, path: str | Path) -> bool:
-        return self.why_denied(path, write=False) is None
+    def can_read(self, path: str | Path, *, directory: bool = False) -> bool:
+        return self.why_denied(path, write=False, directory=directory) is None
 
     def can_write(self, path: str | Path) -> bool:
         return self.why_denied(path, write=True) is None
 
-    def why_denied(self, path: str | Path, *, write: bool) -> str | None:
+    def why_denied(self, path: str | Path, *, write: bool, directory: bool = False) -> str | None:
         """None if allowed, otherwise a reason an agent can act on."""
         p = normalize(path)
         for glob in self.fs_deny:
@@ -78,6 +78,10 @@ class Permissions:
         # For reads, a directory whose contents match ('/repo/**') is itself listable.
         forms = (p,) if write else (p, p.rstrip("/") + "/")
         for layer in self.fs_write if write else self.fs_read:
+            # A directory inside a glob's fixed root ('/repo/' of '/repo/**/*.md') can be
+            # listed and searched; its files are still checked one by one.
+            if directory and not write and any(_inside_root(p, glob) for glob in layer):
+                continue
             if not any(fnmatchcase(f, glob) for glob in layer for f in forms):
                 if not layer:
                     return f"this role has no {'write' if write else 'read'} access"
@@ -158,3 +162,14 @@ def _with_real_variants(globs) -> tuple[str, ...]:
 
 def _dedupe(items: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(items))
+
+
+def _inside_root(directory: str, glob: str) -> bool:
+    """True if `directory` is at or below the fixed part of `glob`, up to its last '/'
+    before the first wildcard. '/repo/**/*.md' has root '/repo/'; a glob with no
+    wildcard is a single path and has no root to list."""
+    cut = min((i for i in (glob.find(c) for c in "*?[") if i >= 0), default=-1)
+    if cut < 0:
+        return False
+    root = glob[: glob.rfind("/", 0, cut) + 1]
+    return bool(root) and (directory.rstrip("/") + "/").startswith(root)

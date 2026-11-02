@@ -37,8 +37,9 @@ class Guard:
         literal = normalize(p)
         real = os.path.realpath(literal)
         action = "write" if write else "read"
+        directory = os.path.isdir(real)
         for candidate in dict.fromkeys((literal, real)):
-            reason = self.permissions.why_denied(candidate, write=write)
+            reason = self.permissions.why_denied(candidate, write=write, directory=directory)
             if reason:
                 via = f" (symlink to {real})" if candidate == real != literal else ""
                 raise PermissionDenied(f"{action} access to {literal}{via} isn't allowed for role {self.resolved.role}: {reason}")

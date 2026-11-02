@@ -99,6 +99,22 @@ def test_allowed_directory_itself_is_readable_but_not_writable(role):
     assert not role.can_write("/repo")
 
 
+def test_directories_inside_a_file_type_glob_can_be_listed_not_read():
+    p = Permissions.from_role({"fs_read": ["/repo/*.md", "/repo/**/*.md"], "fs_deny": ["**/.env*"]})
+    assert p.can_read("/repo/README.md") and p.can_read("/repo/docs/a/b.md")
+    assert not p.can_read("/repo/src/app.xml")
+    assert p.can_read("/repo/src", directory=True)                 # list/search it; files filtered
+    assert not p.can_read("/repo/src")                              # not as a file path
+    assert not p.can_read("/", directory=True)                      # ancestors stay closed
+    assert not p.can_read("/other", directory=True)
+    assert not p.can_read("/repo/.env.d", directory=True)           # deny still wins
+
+
+def test_a_glob_without_wildcards_opens_no_directory():
+    p = Permissions.from_role({"fs_read": ["/repo/README.md"]})
+    assert not p.can_read("/repo", directory=True)
+
+
 def test_symlinked_prefix_gets_a_resolved_variant(tmp_path):
     real = tmp_path / "real"
     (real / "src").mkdir(parents=True)

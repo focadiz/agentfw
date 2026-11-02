@@ -245,6 +245,28 @@ def test_fs_read_and_write(tools):
     assert (root / "src" / "new" / "deep" / "file.txt").read_text() == "x"
 
 
+def test_fs_read_stops_at_a_whole_line_and_says_where_to_resume(tools, monkeypatch):
+    ts, root = tools
+    monkeypatch.setattr("agentfw.tools.fs.MAX_READ_CHARS", 100)
+    (root / "src" / "long.txt").write_text("".join(f"line {n}\n" for n in range(1, 51)))
+    out = ts.get("fs.read").invoke({"path": "src/long.txt"})
+    header, *rows, note = out.splitlines()
+    last = int(rows[-1].split()[0])
+    assert header.endswith(f"(lines 1-{last} of 50)") and last < 50
+    assert rows[-1].endswith(f"line {last}")                                   # not cut mid-line
+    assert f"start_line={last + 1}" in note
+    resumed = ts.get("fs.read").invoke({"path": "src/long.txt", "start_line": last + 1})
+    assert f"(lines {last + 1}-" in resumed.splitlines()[0]
+
+
+def test_fs_read_returns_one_line_even_if_it_is_too_long(tools, monkeypatch):
+    ts, root = tools
+    monkeypatch.setattr("agentfw.tools.fs.MAX_READ_CHARS", 50)
+    (root / "src" / "wide.txt").write_text("x" * 500 + "\nshort\n")
+    out = ts.get("fs.read").invoke({"path": "src/wide.txt"}).splitlines()
+    assert "(lines 1-1 of 2)" in out[0] and len(out[1]) == 50 and "start_line=2" in out[2]
+
+
 def test_denied_write_is_returned_and_audited(tools):
     ts, root = tools
     result = ts.get("fs.write").invoke({"path": "docs/notes.md", "content": "overwrite"})
@@ -262,6 +284,16 @@ def test_search_and_list_skip_unreadable_files(tools):
     assert "leak" not in found                                                    # .env content never shown
     listing = ts.get("fs.list").invoke({"path": ".", "glob": "*"})
     assert ".env" not in listing and "1 entries hidden" in listing
+
+
+def test_markdown_only_role_can_search_folders_but_sees_only_markdown(sandbox):
+    r, root = sandbox
+    perms = Permissions.from_role({"fs_read": [f"{root}/*.md", f"{root}/**/*.md"], "fs_deny": ["**/.env*"]})
+    ts = build_toolset(replace(r, permissions=perms), check_requirements=False)
+    found = ts.get("fs.search").invoke({"pattern": "TODO", "path": str(root)})
+    assert found == "docs/notes.md:1: TODO in docs"                              # app.txt skipped, no denial
+    assert ts.get("fs.list").invoke({"path": str(root / "src")}).endswith("(1 entries hidden: not readable by this role)")
+    assert ts.get("fs.read").invoke({"path": "src/app.txt"}).startswith("Denied:")
 
 
 def test_invalid_arguments_come_back_as_errors(tools):

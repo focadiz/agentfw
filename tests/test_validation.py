@@ -46,6 +46,10 @@ BREAKAGES = [
         "roles/pm.yaml", "  - when: before_handoff", "  - on: before_handoff",
         "'when' is a required property", id="yaml-on-key"),
     pytest.param(
+        "examples/ridexpress-uc1/spec-001.yaml", "A valid registration returns success",
+        "POST /user on mobile-experience-api returns HTTP 201",
+        "REQ-1 decides design: 'mobile-experience-api', 'HTTP 201'", id="spec-decides-design"),
+    pytest.param(
         "projects/ridexpress.yaml", "      scheme: RideXpress\n", "",
         "pack ios needs variable 'scheme'", id="missing-project-variable"),
 ]
@@ -80,3 +84,11 @@ def test_cli_resolve(ws_copy, capsys):
     out = capsys.readouterr().out
     assert "packs:        ios" in out and "commands run in:" in out
     assert main(["--root", str(root), "resolve", "ridexpress", "developer", "--task", "nope"]) == 2
+
+
+def test_spec_may_name_what_the_idea_constrains(ws_copy):
+    root, edit = ws_copy
+    edit("examples/ridexpress-uc1/spec-001.yaml", "A valid registration returns success",
+         "A valid registration through POST /user returns success")
+    report = validate(load_workspace(root))
+    assert report.errors == [], report.format()

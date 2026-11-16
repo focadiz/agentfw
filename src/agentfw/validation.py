@@ -298,7 +298,7 @@ def _check_one_handoff(report: Report, path: Path, h: dict, by_id: dict[str, Doc
         return
 
     if htype == "spec":
-        _check_spec(report, path, body)
+        _check_spec(report, path, h, by_id)
     elif htype == "task_list":
         _check_task_list(report, path, h, by_id)
     elif htype == "task":
@@ -315,12 +315,34 @@ def _parent_of_type(h: dict, by_id: dict[str, Doc], htype: str) -> dict | None:
     return next((by_id[p].data for p in h.get("parents", []) if p in by_id and by_id[p].data["type"] == htype), None)
 
 
-def _check_spec(report: Report, path: Path, body: dict) -> None:
+# Design details a spec's requirements shouldn't decide: named APIs, endpoints, HTTP statuses.
+DESIGN_TERMS = re.compile(
+    r"\b[a-z0-9]+(?:-[a-z0-9]+)*-api\b"                          # mobile-experience-api
+    r"|\b(?:experience|process|system)\s+APIs?\b"                # the API layers
+    r"|\b(?:GET|POST|PUT|PATCH|DELETE)\s+/[\w/{}.:-]*"            # POST /users
+    r"|\b(?:HTTP|status(?:\s+code)?)\s*[1-5]\d\d\b",               # HTTP 409
+    re.IGNORECASE,
+)
+
+
+def _check_spec(report: Report, path: Path, h: dict, by_id: dict[str, Doc]) -> None:
     seen = set()
-    for r in body["requirements"]:
+    for r in h["body"]["requirements"]:
         if r["id"] in seen:
             report.error(path, f"requirement id {r['id']} is used twice")
         seen.add(r["id"])
+    # A term the idea itself uses (e.g. a contract in its constraints) may appear.
+    idea = _parent_of_type(h, by_id, "idea")
+    allowed = " ".join(idea["body"].get("goals", []) + idea["body"].get("constraints", [])).lower() if idea else ""
+    for r in h["body"]["requirements"]:
+        texts = [r["statement"], *r.get("acceptance_criteria", [])]
+        found = dict.fromkeys(m.group().strip() for t in texts for m in DESIGN_TERMS.finditer(t))
+        named = [t for t in found if t.lower() not in allowed]
+        if named:
+            report.error(path, f"{r['id']} decides design: {', '.join(repr(t) for t in named)}. Say what the user "
+                               "or system does and leave APIs, endpoints and status codes to the architect; only "
+                               "terms in the idea's goals or constraints may appear. A design question goes in "
+                               "open_questions.")
 
 
 def _check_task_list(report: Report, path: Path, h: dict, by_id: dict[str, Doc]) -> None:

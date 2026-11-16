@@ -336,7 +336,7 @@ def _check_spec(report: Report, path: Path, h: dict, by_id: dict[str, Doc]) -> N
     allowed = " ".join(idea["body"].get("goals", []) + idea["body"].get("constraints", [])).lower() if idea else ""
     for r in h["body"]["requirements"]:
         texts = [r["statement"], *r.get("acceptance_criteria", [])]
-        found = dict.fromkeys(m.group().strip() for t in texts for m in DESIGN_TERMS.finditer(t))
+        found = dict.fromkeys(m.group().strip().rstrip(".:") for t in texts for m in DESIGN_TERMS.finditer(t))
         named = [t for t in found if t.lower() not in allowed]
         if named:
             report.error(path, f"{r['id']} decides design: {', '.join(repr(t) for t in named)}. Say what the user "

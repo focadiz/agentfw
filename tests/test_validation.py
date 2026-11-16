@@ -89,6 +89,6 @@ def test_cli_resolve(ws_copy, capsys):
 def test_spec_may_name_what_the_idea_constrains(ws_copy):
     root, edit = ws_copy
     edit("examples/ridexpress-uc1/spec-001.yaml", "A valid registration returns success",
-         "A valid registration through POST /user returns success")
+         "A valid registration returns success. It goes through POST /user.")
     report = validate(load_workspace(root))
     assert report.errors == [], report.format()

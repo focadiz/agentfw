@@ -90,6 +90,17 @@ def test_changes_requested_sends_the_comment_back_and_the_author_revises(ws, sto
     assert [(r["step"], r["outputs"]) for r in s.runs] == [("pm_spec", ["spec-001"]), ("pm_spec", ["spec-001"])]
 
 
+def test_a_revision_written_as_a_new_document_supersedes_the_old_one(ws, store, example):
+    p = pipeline(ws, store, pm=[write(example, "spec-001"), STOP, write(example, "spec-001"), STOP])  # no id: new doc
+    p.run("idea-001")
+    store.decide("spec-001", "changes_requested", by="focadiz", comment="Tighten REQ-2.")
+    s = p.run("idea-001")
+    assert s.waiting_on["handoff"] == "spec-002"
+    assert store.get("spec-001")["status"] == "superseded"
+    fresh = pipeline(ws, store)                                   # starting over doesn't revise spec-001 again
+    assert fresh.run("idea-001").waiting_on["handoff"] == "spec-002" and fresh.models["pm"].seen == []
+
+
 def test_rejected_ends_the_pipeline(ws, store, example):
     p = pipeline(ws, store, pm=[write(example, "spec-001")])
     p.run("idea-001")

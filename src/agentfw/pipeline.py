@@ -188,6 +188,10 @@ class Pipeline:
                    "outputs": result.outputs, "model_calls": result.model_calls,
                    "tokens": result.tokens.get("total", 0), "questions": result.questions}
             ids = [i for i in result.outputs if self.store.get(i)["type"] == step.produces]
+            if to_revise and ids and to_revise[0]["id"] not in ids:
+                # The role wrote a new document instead of revising; the old one is replaced.
+                self.store.supersede(to_revise[0]["id"], by=ids[-1])
+                self.say(f"{step.node}: {to_revise[0]['id']} superseded by {ids[-1]}")
             if not result.ok or not ids:
                 return Command(goto=END, update={"runs": [run], "outcome": "failed",
                                                  "detail": f"{step.node} stopped: {result.stop_reason}"})

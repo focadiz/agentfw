@@ -133,6 +133,13 @@ class HandoffStore:
         self._save(doc)
         return doc
 
+    def supersede(self, handoff_id: str, *, by: str) -> dict:
+        """Mark a document as replaced by a newer one (its approval record, if any, is kept)."""
+        doc = {**self.get(handoff_id), "status": "superseded"}
+        self.get(by)                                   # the replacement must exist
+        self._save(doc)
+        return doc
+
     def put(self, doc: Mapping[str, Any]) -> Path:
         """Store a complete document as-is (e.g. an idea written by a human). Validated, never re-enveloped."""
         problems = self.problems(doc)

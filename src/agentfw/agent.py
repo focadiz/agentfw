@@ -181,7 +181,9 @@ def run_role(
         ))
 
     outputs = _changed(store, before)
-    if budget.stopped:
+    if expect and outputs and not _missing(store, outputs, expect):
+        stop = "finished"            # a limit reached after the expected documents were written doesn't undo them
+    elif budget.stopped:
         stop = budget.stopped
     elif _missing(store, outputs, expect) or not outputs:
         stop = "no_output"
@@ -192,7 +194,7 @@ def run_role(
     tool_calls = sum(1 for m in messages if isinstance(m, ToolMessage))
     final = next((m.content for m in reversed(messages) if isinstance(m, AIMessage) and m.content), "")
     final = final if isinstance(final, str) else json.dumps(final)
-    audit.record("agent_end", stop_reason=stop, outputs=outputs, tokens=tokens, model_calls=model_calls, tool_calls=tool_calls)
+    audit.record("agent_end", stop_reason=stop, limit_reached=budget.stopped, outputs=outputs, tokens=tokens, model_calls=model_calls, tool_calls=tool_calls)
     questions = [e["question"] for e in audit.events if e["event"] == "human_ask"]
     return RunResult(audit.run_id, role_id, outputs, stop, model_calls, tool_calls, tokens, str(audit.path), final, questions)
 

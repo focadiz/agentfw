@@ -183,6 +183,19 @@ def test_model_call_limit_stops_the_loop(ws_copy, tmp_path):
     assert result.stop_reason == "model_call_limit" and result.model_calls == 3
 
 
+def test_a_limit_reached_after_writing_still_counts_as_finished(ws_copy, tmp_path):
+    root, edit = ws_copy
+    edit("roles/pm.yaml", "  max_iterations: 25", "  max_iterations: 3")
+    ws = load_workspace(root)
+    store = HandoffStore(ws, "ridexpress", tmp_path / "h2")
+    store.put(yaml.safe_load((root / "examples/ridexpress-uc1/idea-001.yaml").read_text()))
+    example = {"spec-001": yaml.safe_load((root / "examples/ridexpress-uc1/spec-001.yaml").read_text())}
+    model = ScriptedModel(script=[write_spec(example)] + [tool_call("handoff_list") for _ in range(5)])
+    result = run_role(ws, "ridexpress", "pm", inputs=["idea-001"], model=model, handoffs=store, expect=["spec"])
+    assert result.model_calls == 3 and result.outputs == ["spec-001"]
+    assert result.stop_reason == "finished" and result.ok
+
+
 def test_requirements_fail_before_any_model_call(ws, store, example, monkeypatch):
     monkeypatch.setenv("PATH", "/nonexistent")
     from agentfw.tools import RequirementsError

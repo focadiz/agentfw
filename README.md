@@ -179,7 +179,7 @@ Tool names are sent to the model with dots replaced (`fs.read` → `fs_read`), s
 
 `--handoffs-dir` points a run at another folder, e.g. `.work/handoffs/<project>` for trial runs, so nothing is written to the project's real `handoffs_dir` until you're ready.
 
-**Models:** the PM uses `nvidia/nemotron-3-ultra-550b-a55b` (paid, about $0.25 per spec) with the free Nemotron and `google/gemma-4-31b-it:free` as fallbacks; the free models alone hit upstream rate limits too often. The other roles still have `<model-id>` placeholders until each is tried. `fw run --model <id>` overrides for one run.
+**Models:** the PM uses `nvidia/nemotron-3-ultra-550b-a55b` (paid, about $0.25 per spec) with the free Nemotron and `google/gemma-4-31b-it:free` as fallbacks; the free models alone hit upstream rate limits too often. The Architect uses the same models. Developer, QA and DevOps still have `<model-id>` placeholders until each is tried. `fw run --model <id>` overrides for one run.
 
 ## The pipeline
 
@@ -226,6 +226,6 @@ It checks every YAML file against its schema, then the cross-references between 
 ## Open TODOs in the configs
 
 - `projects/ridexpress.yaml`: confirm the CloudHub `health_url` pattern; create the Xcode project in `mobile-app` by hand before the first iOS task
-- Roles: choose real model ids for architect, developer, qa and devops (pm is set)
+- Roles: choose real model ids for developer, qa and devops (pm and architect are set)
 - Local MuleSoft builds need **Maven 3.9.x and Java 17** (what CI uses). This machine has Maven 3.10.0, which breaks `mule-maven-plugin` 4.7.0, and Java 27; `fw requirements ridexpress developer --task task-001` shows the current state
 - `tools/registry.yaml`: confirm the GitHub MCP tool names against the server version you install

@@ -10,7 +10,10 @@ description: >
 
 model:
   provider: openrouter
-  id: "<model-id>"          # strongest reasoning model you can afford; design errors are the costliest
+  # Same paid Nemotron as the PM (~$0.60/M input), free models as the fallback. Design
+  # errors are the costliest, so revisit if designs come out weak.
+  id: "nvidia/nemotron-3-ultra-550b-a55b"
+  fallback: ["nvidia/nemotron-3-ultra-550b-a55b:free", "google/gemma-4-31b-it:free"]
   temperature: 0.4          # some diversity helps when generating alternatives
   max_output_tokens: 10000
 

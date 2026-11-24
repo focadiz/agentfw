@@ -124,15 +124,27 @@ class HandoffStore:
         if comment:
             approval["comment"] = comment.strip()
         doc = {**doc, "status": DECIDED[decision], "approval": approval}
-        self.put(doc)
+        # Validation rules can change while a document waits. Problems stop an approval,
+        # but never sending it back or rejecting it, which is how they get fixed.
+        problems = self.problems(doc)
+        if problems and decision == "approved":
+            raise HandoffError(f"can't approve {handoff_id}; it no longer passes validation (send it back with "
+                               "revise):\n" + "\n".join(f"  - {p}" for p in problems))
+        self._save(doc)
         return doc
 
     def put(self, doc: Mapping[str, Any]) -> Path:
         """Store a complete document as-is (e.g. an idea written by a human). Validated, never re-enveloped."""
-        others = {i: d for i, d in self.all().items() if i != doc.get("id")}
-        problems = handoff_errors(self.ws, dict(doc), others)
+        problems = self.problems(doc)
         if problems:
             raise HandoffError("document rejected:\n" + "\n".join(f"  - {p}" for p in problems))
+        return self._save(doc)
+
+    def problems(self, doc: Mapping[str, Any]) -> list[str]:
+        others = {i: d for i, d in self.all().items() if i != doc.get("id")}
+        return handoff_errors(self.ws, dict(doc), others)
+
+    def _save(self, doc: Mapping[str, Any]) -> Path:
         self.dir.mkdir(parents=True, exist_ok=True)
         path = self.path_of(doc["id"])
         path.write_text(dump(dict(doc)))

@@ -135,6 +135,17 @@ def test_decide_checks_status_and_comment(store, example, ws):
         store.decide("spec-001", "approved", by="focadiz")
 
 
+def test_a_document_that_no_longer_validates_can_be_sent_back_but_not_approved(store, example):
+    bad = copy.deepcopy(example["design-001"])
+    bad["body"]["components"][0]["repo"] = "user-sign-up-process-api"    # valid before the repo check existed
+    for i in ("spec-001", "task_list-001", "adr-001"):
+        store.put(example[i])
+    store._save({**bad, "status": "pending_approval"})
+    with pytest.raises(HandoffError, match="can't approve design-001"):
+        store.decide("design-001", "approved", by="focadiz")
+    assert store.decide("design-001", "changes_requested", by="focadiz", comment="fix the repo")["status"] == "draft"
+
+
 def test_only_approved_ideas_start_and_documents_trace_back_to_their_idea(ws, store, example):
     p = pipeline(ws, store)
     store.put({**example["idea-001"], "id": "idea-002", "status": "draft"})

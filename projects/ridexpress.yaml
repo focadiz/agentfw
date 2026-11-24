@@ -53,7 +53,7 @@ roles:
   - id: devops
     enabled: false          # turn on once the build pipeline is proven
 
-approvers: ["<your-github-handle>"]
+approvers: ["focadiz"]
 
 budget:
   max_tokens_per_day: 3000000

@@ -24,6 +24,7 @@ SCHEMA_VERSION = "0.1"
 # Ungated documents are accepted as written; reports are simply finished.
 REPORT_TYPES = {"pull_request", "test_report", "deploy_report"}
 ID = re.compile(r"^(?P<type>[a-z_]+)-(?P<n>[0-9]+)$")
+DECIDED = {"approved": "approved", "rejected": "rejected", "changes_requested": "draft"}
 
 
 class HandoffError(Exception):
@@ -91,7 +92,7 @@ class HandoffStore:
             "project": self.project_id,
             "title": document.get("title", ""),
             "created_by": created_by,
-            "created_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "created_at": _now(),
             "parents": list(document.get("parents", [])),
             "status": "pending_approval" if gated else ("done" if htype in REPORT_TYPES else "approved"),
             "body": document.get("body", {}),
@@ -108,6 +109,24 @@ class HandoffStore:
         tmp.replace(path)
         return doc
 
+    def decide(self, handoff_id: str, decision: str, *, by: str, comment: str | None = None) -> dict:
+        """Record a human's decision on a document waiting at a gate.
+
+        approved → status approved; rejected → rejected; changes_requested → back to
+        draft, so its author can revise it (the comment says what to change).
+        """
+        doc = self.get(handoff_id)
+        if doc["status"] != "pending_approval":
+            raise HandoffError(f"{handoff_id} is {doc['status']}, not waiting for approval")
+        if decision != "approved" and not (comment or "").strip():
+            raise HandoffError(f"say why with a comment when the decision is {decision}")
+        approval = {"by": by, "at": _now(), "decision": decision}
+        if comment:
+            approval["comment"] = comment.strip()
+        doc = {**doc, "status": DECIDED[decision], "approval": approval}
+        self.put(doc)
+        return doc
+
     def put(self, doc: Mapping[str, Any]) -> Path:
         """Store a complete document as-is (e.g. an idea written by a human). Validated, never re-enveloped."""
         others = {i: d for i, d in self.all().items() if i != doc.get("id")}
@@ -118,6 +137,10 @@ class HandoffStore:
         path = self.path_of(doc["id"])
         path.write_text(dump(dict(doc)))
         return path
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def dump(doc: Mapping[str, Any]) -> str:

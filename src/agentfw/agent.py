@@ -164,11 +164,11 @@ def run_role(
                  unavailable_tools=sorted(toolset.unavailable))
 
     messages: list = [HumanMessage(first_message(input_docs, expect, instructions))]
-    written_before = set(store.all())
+    before = store.all()             # compared by content, so a revised document (same id) counts as output
     reminders = 0
     while True:
         messages = _stream(agent, messages, limits["max_iterations"], on_event)
-        outputs = [i for i in store.all() if i not in written_before]
+        outputs = _changed(store, before)
         missing = _missing(store, outputs, expect)
         if budget.stopped or not missing or reminders >= REMINDERS:
             break
@@ -180,7 +180,7 @@ def run_role(
             "Write them now with handoff_write, then stop."
         ))
 
-    outputs = sorted(i for i in store.all() if i not in written_before)
+    outputs = _changed(store, before)
     if budget.stopped:
         stop = budget.stopped
     elif _missing(store, outputs, expect) or not outputs:
@@ -273,6 +273,10 @@ def _describe(m, on_event) -> None:
         on_event(f"  ← {text}")
     elif isinstance(m, HumanMessage) and m.content == WRAP_UP:
         on_event("wrap-up: near the limit; only handoff tools from here")
+
+
+def _changed(store: HandoffStore, before: dict[str, dict]) -> list[str]:
+    return sorted(i for i, d in store.all().items() if before.get(i) != d)
 
 
 def _missing(store: HandoffStore, outputs: list[str], expect: Sequence[str] | None) -> list[str]:

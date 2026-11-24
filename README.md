@@ -7,8 +7,9 @@ This folder holds the configuration layer (schemas, role and pack configs, the t
 - **M2:** tools. The tool factory turns a resolved role into LangChain tools, every call goes through the permission guard, pack commands run without a shell, and everything is written to an audit log.
 - **M3:** retrieval and memory. A local knowledge index over each project's docs and API specs (Chroma + local embeddings), `rag.search` with MMR, and per-role project memory.
 - **M4:** agents. Any role runs as a LangChain `create_agent` loop (`fw run`), writing validated handoff documents through the handoff store.
+- **M5:** the pipeline. A LangGraph graph runs an idea through PM and Architect, pausing at each approval gate until a human runs `fw approve`, `fw revise` or `fw reject`.
 
-The LangGraph pipeline with approval gates comes next.
+Developer ⇄ QA on a real MuleSoft task comes next.
 
 ## Setup
 
@@ -27,6 +28,8 @@ python3.13 -m venv .venv
 echo 'OPENROUTER_API_KEY=sk-or-...' > .env                   # git-ignored; fw loads it
 .venv/bin/fw handoffs ridexpress import examples/ridexpress-uc1/idea-001.yaml --handoffs-dir .work/handoffs/ridexpress
 .venv/bin/fw run ridexpress pm --input idea-001 --expect spec --handoffs-dir .work/handoffs/ridexpress
+.venv/bin/fw pipeline ridexpress idea-001 --handoffs-dir .work/handoffs/ridexpress   # runs until the first gate
+.venv/bin/fw approve ridexpress spec-001 --handoffs-dir .work/handoffs/ridexpress    # ...and continues
 .venv/bin/pytest                      # unit tests (offline)
 .venv/bin/pytest -m integration       # real embedding model on the real RideXpress docs
 ```
@@ -170,13 +173,30 @@ Tool names are sent to the model with dots replaced (`fs.read` → `fs_read`), s
 - **Loop:** LangChain `create_agent` with the role's tools. `LimitsMiddleware` enforces the role's `limits`: model calls (`max_iterations`), tokens (`max_tokens_per_task`) and time (`timeout_minutes`). If the role has `model.fallback`, `ModelFallbackMiddleware` switches models when a call fails.
 - **Output:** agents write documents with `handoff_write`. The **handoff store** assigns the id, records the author and run id, sets the status (`pending_approval` if the role has a gate on that type), and validates the whole document (schema, parents exist, unique requirement ids, stories that reference real requirements, design coverage...). A rejected document comes back to the agent as a list of problems to fix.
 - **Expected outputs:** with `--expect spec`, an agent that stops without writing a spec gets one reminder, then the run is reported as `no_output`.
-- **Questions:** `human_ask` is deferred by default: the question is logged and the agent is told to record it as an open question. `--human console` asks in the terminal instead. M5 will pause the pipeline instead.
+- **Questions:** `human_ask` is deferred by default: the question is logged and the agent is told to record it as an open question. `--human console` asks in the terminal instead. In the pipeline, deferred questions are shown with the run when it stops at a gate.
 - **Host requirements** are checked before the first model call for roles that run pack commands, so a broken toolchain costs no tokens.
 - **Result:** stop reason (`finished`, `no_output`, `model_call_limit`, `token_budget`, `timeout`), documents written, model and tool call counts, tokens, and the audit log path.
 
 `--handoffs-dir` points a run at another folder, e.g. `.work/handoffs/<project>` for trial runs, so nothing is written to the project's real `handoffs_dir` until you're ready.
 
-**Models:** the PM uses `nvidia/nemotron-3-ultra-550b-a55b:free` with `qwen/qwen3.8-27b:free` as fallback, both free on OpenRouter with tool calling (checked 2026-10-05). The other roles still have `<model-id>` placeholders until each is tried. `fw run --model <id>` overrides for one run.
+**Models:** the PM uses `nvidia/nemotron-3-ultra-550b-a55b` (paid, about $0.25 per spec) with the free Nemotron and `google/gemma-4-31b-it:free` as fallbacks; the free models alone hit upstream rate limits too often. The other roles still have `<model-id>` placeholders until each is tried. `fw run --model <id>` overrides for one run.
+
+## The pipeline
+
+`fw pipeline <project> <idea>` runs an approved idea through the roles as a LangGraph graph (`fw pipeline <project> --graph` prints it as Mermaid):
+
+```
+idea → pm: spec → ⏸ approve spec → pm: task_list → architect: design (+ ADRs) → ⏸ approve design → architect: tasks → ready for development
+```
+
+- **The handoff store is the source of truth.** Each step first looks for the document it would write (its type, with its input in `parents`). If it exists, the role doesn't run again. So a pipeline can be started over, or pick up documents written by hand or by `fw run`, without paying for the same work twice.
+- **Gates** come from the roles' `gates` (`before_handoff`). A document waiting for approval pauses the graph with LangGraph's `interrupt()`. The command prints the document's path and the three ways on:
+  - `fw approve <project> <id> [-m comment]` → status `approved`, and the pipeline continues.
+  - `fw revise <project> <id> -m "what to change"` → status `draft`; the author role runs again with the comment and revises the same document (same id), which comes back to the gate.
+  - `fw reject <project> <id> -m "why"` → status `rejected`; the pipeline ends.
+  The decision is recorded on the document (`approval: {by, at, decision, comment}`). `--by` defaults to the project's only approver, and must be one of `approvers`. `--no-resume` records the decision without continuing.
+- **Pausing survives between commands.** Checkpoints are kept in `~/.agentfw/pipelines/<project>.sqlite`, one thread per idea and handoffs folder. If a step fails (no output, a missing model id), fix the cause and run `fw pipeline` again: it continues from the last checkpoint.
+- `fw pipeline <project> <idea> --status` shows the runs so far (stop reason, outputs, calls, tokens, questions) and what it's waiting on, without running anything.
 
 ## Validate
 
@@ -199,14 +219,13 @@ It checks every YAML file against its schema, then the cross-references between 
 
 - External documentation indexes (`vector_index` sources) and `url` sources
 - Remaining built-in tools: `git.*`, `handoff.*`, `human.ask`, `web.fetch` (M4–M6), and the GitHub MCP connection (M6). `fw tools` lists what's still unavailable for a role
-- M5: the LangGraph pipeline with approval gates, and `fw approve`
 - M6: Developer ⇄ QA on a real MuleSoft task (needs `git.*` and the GitHub MCP tools)
 - Salesforce pack (the Developer role already allows it; the validator warns until it exists)
 - An iOS deploy pack. TestFlight/App Store stays manual for now
 
 ## Open TODOs in the configs
 
-- `projects/ridexpress.yaml`: set `approvers` to your GitHub handle; confirm the CloudHub `health_url` pattern; create the Xcode project in `mobile-app` by hand before the first iOS task
+- `projects/ridexpress.yaml`: confirm the CloudHub `health_url` pattern; create the Xcode project in `mobile-app` by hand before the first iOS task
 - Roles: choose real model ids for architect, developer, qa and devops (pm is set)
 - Local MuleSoft builds need **Maven 3.9.x and Java 17** (what CI uses). This machine has Maven 3.10.0, which breaks `mule-maven-plugin` 4.7.0, and Java 27; `fw requirements ridexpress developer --task task-001` shows the current state
 - `tools/registry.yaml`: confirm the GitHub MCP tool names against the server version you install

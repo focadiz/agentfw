@@ -43,6 +43,28 @@ def main(argv: list[str] | None = None) -> int:
                     help="defer: questions become open questions (default); console: ask in this terminal")
     rn.add_argument("--quiet", action="store_true", help="don't stream the agent's steps")
 
+    pl = sub.add_parser("pipeline", help="run an idea through the roles, pausing at approval gates")
+    pl.add_argument("project")
+    pl.add_argument("idea", nargs="?", help="idea handoff id (start, or continue after a decision or an error)")
+    pl.add_argument("--status", action="store_true", help="show where the pipeline is without running anything")
+    pl.add_argument("--graph", action="store_true", help="print the pipeline graph as Mermaid")
+    pl.add_argument("--model", help="model id for every role, overriding their configs")
+    pl.add_argument("--handoffs-dir", type=Path, help="use this folder instead of the project's handoffs_dir")
+    pl.add_argument("--quiet", action="store_true", help="don't stream the agents' steps")
+
+    for name, help in (("approve", "approve a document waiting at a gate, then continue its pipeline"),
+                       ("revise", "send a document back to its author with the changes you want"),
+                       ("reject", "reject a document; its pipeline ends")):
+        d = sub.add_parser(name, help=help)
+        d.add_argument("project")
+        d.add_argument("handoff", help="id of the document waiting for approval")
+        d.add_argument("-m", "--comment", required=name != "approve", help="what to change, or why")
+        d.add_argument("--by", help="who decides (default: the project's only approver)")
+        d.add_argument("--no-resume", action="store_true", help="record the decision without continuing the pipeline")
+        d.add_argument("--model", help="model id for every role, overriding their configs")
+        d.add_argument("--handoffs-dir", type=Path, help="use this folder instead of the project's handoffs_dir")
+        d.add_argument("--quiet", action="store_true", help="don't stream the agents' steps")
+
     def role_command(name: str, help: str) -> argparse.ArgumentParser:
         p = sub.add_parser(name, help=help)
         p.add_argument("project")
@@ -95,6 +117,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_handoffs(ws, args)
     if args.command == "run":
         return _cmd_run(ws, args)
+    if args.command == "pipeline":
+        return _cmd_pipeline(ws, args)
+    if args.command in ("approve", "revise", "reject"):
+        return _cmd_decide(ws, args)
 
     try:
         resolved = _resolve(ws, args)
@@ -256,6 +282,90 @@ def _cmd_run(ws: Workspace, args) -> int:
         print(f"  agent: {result.final_message[:500]}")
     print(f"  audit log: {result.audit_path}")
     return 0 if result.ok else 1
+
+
+DECISIONS = {"approve": "approved", "revise": "changes_requested", "reject": "rejected"}
+
+
+def _pipeline_errors() -> tuple[type[Exception], ...]:
+    from .handoffs import HandoffError
+    from .models import ModelConfigError
+    from .pipeline import PipelineError
+    from .tools import RequirementsError
+
+    return ResolutionError, HandoffError, ModelConfigError, RequirementsError, PipelineError, KeyError
+
+
+def _pipeline(ws: Workspace, args):
+    from .handoffs import HandoffStore
+    from .pipeline import Pipeline
+
+    say = None if args.quiet else (lambda line: print(line, file=sys.stderr, flush=True))
+    return Pipeline(ws, args.project, HandoffStore(ws, args.project, args.handoffs_dir), model_id=args.model, on_event=say)
+
+
+def _cmd_pipeline(ws: Workspace, args) -> int:
+    if args.project not in ws.projects:
+        return _fail(f"unknown project {args.project!r}", 2)
+    p = _pipeline(ws, args)
+    if args.graph:
+        print(p.mermaid())
+        return 0
+    if not args.idea:
+        return _fail("which idea? e.g. fw pipeline ridexpress idea-001", 2)
+    try:
+        status = p.status(args.idea) if args.status else p.run(args.idea)
+    except _pipeline_errors() as e:
+        print(_format_status(p.status(args.idea), args), file=sys.stderr)
+        return _fail(f"{e}\nfix it, then run `fw pipeline {args.project} {args.idea}` to continue")
+    print(_format_status(status, args))
+    return 0 if status.state in ("waiting", "ready_for_development") else 1
+
+
+def _cmd_decide(ws: Workspace, args) -> int:
+    if args.project not in ws.projects:
+        return _fail(f"unknown project {args.project!r}", 2)
+    approvers = [a for a in ws.projects[args.project].data.get("approvers", []) if not a.startswith("<")]
+    by = args.by or (approvers[0] if len(approvers) == 1 else None)
+    if not by:
+        return _fail("say who decides with --by (the project has no single approver)", 2)
+    if approvers and by not in approvers:
+        return _fail(f"{by} isn't an approver of {args.project} ({', '.join(approvers)})", 2)
+    p = _pipeline(ws, args)
+    try:
+        doc = p.store.decide(args.handoff, DECISIONS[args.command], by=by, comment=args.comment)
+        idea = p.idea_of(args.handoff)
+    except _pipeline_errors() as e:
+        return _fail(str(e))
+    print(f"{doc['id']}: {doc['approval']['decision']} by {by}")
+    if args.no_resume:
+        print(f"continue with: fw pipeline {args.project} {idea}{_dir_flag(args)}")
+        return 0
+    args.idea = idea
+    args.status = args.graph = False
+    return _cmd_pipeline(ws, args)
+
+
+def _format_status(s, args) -> str:
+    lines = [f"pipeline {s.idea}: {s.state}" + (f" ({s.detail})" if s.detail else "")]
+    for r in s.runs:
+        lines.append(f"  {r['step']:<18} {r['stop_reason']:<16} {', '.join(r['outputs']) or '-':<24} "
+                     f"{r['model_calls']} calls, {r['tokens']} tokens")
+        lines.extend(f"    question: {q}" for q in r.get("questions", []))
+    if s.docs:
+        lines.append("  documents: " + "; ".join(f"{t} {', '.join(ids)}" for t, ids in s.docs.items()))
+    if s.waiting_on:
+        w, flag = s.waiting_on, _dir_flag(args)
+        lines += [f"  waiting for approval: {w['handoff']} ({w['type']} by {w['author']}) {w['title']}",
+                  f"    read it:  {w['path']}",
+                  f"    then:     fw approve {args.project} {w['handoff']}{flag}",
+                  f"          or: fw revise {args.project} {w['handoff']} -m \"what to change\"{flag}",
+                  f"          or: fw reject {args.project} {w['handoff']} -m \"why\"{flag}"]
+    return "\n".join(lines)
+
+
+def _dir_flag(args) -> str:
+    return f" --handoffs-dir {args.handoffs_dir}" if args.handoffs_dir else ""
 
 
 def _cmd_search(resolved: Resolved, args) -> int:

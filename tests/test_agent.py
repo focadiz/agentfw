@@ -158,6 +158,17 @@ def test_pm_run_end_to_end(ws, store, example):
         ["agent_start", "handoff_written", "agent_end"]
 
 
+def test_a_document_sent_as_a_json_string_is_accepted(ws, store, example):
+    import json
+    doc = {"type": "spec", "title": "UC-1 User Sign Up", "parents": ["idea-001"], "body": spec_body(example)}
+    model = ScriptedModel(script=[tool_call("handoff_write", document=json.dumps(doc)),
+                                  tool_call("handoff_write", document="{not json"), AIMessage("Done.")])
+    result = run_role(ws, "ridexpress", "pm", inputs=["idea-001"], model=model, handoffs=store, expect=["spec"])
+    assert result.ok and result.outputs == ["spec-001"]
+    error = model.seen[-1][-1].content
+    assert "must be a JSON object, not a string" in error
+
+
 def test_runner_reminds_once_when_nothing_was_written(ws, store, example):
     model = ScriptedModel(script=[AIMessage("I think the spec is clear."), write_spec(example), AIMessage("Done.")])
     result = run_role(ws, "ridexpress", "pm", inputs=["idea-001"], model=model, handoffs=store, expect=["spec"])

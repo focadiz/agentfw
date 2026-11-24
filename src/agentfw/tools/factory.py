@@ -13,6 +13,7 @@ text instead of raised, so it can adjust and continue.
 from __future__ import annotations
 
 import importlib
+import json
 import re
 import time
 from collections.abc import Callable
@@ -127,11 +128,28 @@ def _add(ts: Toolset, tool_id: str, description: str, schema: dict, source: str,
     ts.ids[name] = tool_id
 
 
+def _decode_json_strings(args: dict[str, Any], schema: dict) -> dict[str, Any]:
+    """Models sometimes send an object or array argument as a JSON string (a 7k-character design,
+    after the wrap-up, cost the architect its run). Parse it when the schema wants that type."""
+    kinds = {"object": dict, "array": list}
+    out = dict(args)
+    for name, value in args.items():
+        want = kinds.get(schema.get("properties", {}).get(name, {}).get("type"))
+        if want and isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except ValueError:
+                continue
+            if isinstance(decoded, want):
+                out[name] = decoded
+    return out
+
+
 def _guarded(ctx: ToolContext, tool_id: str, schema: dict, fn: Callable[..., str]) -> Callable[..., str]:
     validator = Draft202012Validator(schema)
 
     def call(**kwargs: Any) -> str:
-        args = {k: v for k, v in kwargs.items() if v is not None}     # models often send explicit nulls
+        args = _decode_json_strings({k: v for k, v in kwargs.items() if v is not None}, schema)  # models often send nulls
         logged = summarize_args(args)
         start = time.monotonic()
 
@@ -141,7 +159,7 @@ def _guarded(ctx: ToolContext, tool_id: str, schema: dict, fn: Callable[..., str
 
         errors = sorted(validator.iter_errors(args), key=lambda e: list(e.path))
         if errors:
-            message = "; ".join(f"{'/'.join(map(str, e.path)) or 'arguments'}: {e.message}" for e in errors)
+            message = "; ".join(_describe_error(e) for e in errors)
             record("error", reason=message)
             return f"Error: invalid arguments: {message}"
         try:
@@ -178,3 +196,11 @@ def _load_builtin(path: str) -> Callable | None:
         return getattr(importlib.import_module(module_name), attr)
     except (ModuleNotFoundError, AttributeError):
         return None
+
+
+def _describe_error(e) -> str:
+    where = "/".join(map(str, e.path)) or "arguments"
+    if e.validator == "type" and isinstance(e.instance, str) and e.validator_value in ("object", "array"):
+        return (f"{where}: must be a JSON {e.validator_value}, not a string; pass the {e.validator_value} itself "
+                "(this string isn't valid JSON either)")
+    return f"{where}: {e.message}"

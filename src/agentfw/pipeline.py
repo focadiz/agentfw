@@ -175,8 +175,9 @@ class Pipeline:
                 instructions = (f"At the approval gate, {doc['approval']['by']} asked for changes to {doc['id']}:\n\n"
                                 f"> {doc['approval'].get('comment', '')}\n\n"
                                 f"Revise it: call handoff_write with \"id\": \"{doc['id']}\" and the whole corrected "
-                                "document. If the correction should also apply to later documents, save it with "
-                                "memory.write.")
+                                "document. The document already reflects your earlier research: only look up what "
+                                "these changes need. If the correction should also apply to later documents, save it "
+                                "with memory.write.")
             self.say(f"{step.node}: running {step.role}" + (f" to revise {to_revise[0]['id']}" if to_revise else ""))
             result = run_role(
                 self.ws, self.project_id, step.role, inputs=inputs, model=self.models.get(step.role),

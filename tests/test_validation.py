@@ -50,6 +50,12 @@ BREAKAGES = [
         "POST /user on mobile-experience-api returns HTTP 201",
         "REQ-1 decides design: 'mobile-experience-api', 'HTTP 201'", id="spec-decides-design"),
     pytest.param(
+        "examples/ridexpress-uc1/design-001.yaml", "      repo: mulesoft", "      repo: user-sign-up-process-api",
+        "repo 'user-sign-up-process-api' isn't where platform mulesoft lives", id="design-wrong-repo"),
+    pytest.param(
+        "examples/ridexpress-uc1/design-001.yaml", "      platform: mulesoft", "      platform: android",
+        "platform 'android' isn't one of the project's", id="design-unknown-platform"),
+    pytest.param(
         "projects/ridexpress.yaml", "      scheme: RideXpress\n", "",
         "pack ios needs variable 'scheme'", id="missing-project-variable"),
 ]

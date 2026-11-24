@@ -304,7 +304,7 @@ def _check_one_handoff(report: Report, path: Path, h: dict, by_id: dict[str, Doc
     elif htype == "task":
         _check_task(report, path, body, proj, packs)
     elif htype == "design":
-        _check_design(report, path, h, by_id)
+        _check_design(report, path, h, by_id, proj)
     if htype in ("pull_request", "test_report") and body["task_id"] not in h.get("parents", []):
         report.error(path, f"task_id {body['task_id']} should be listed in parents")
     if htype == "test_report":
@@ -389,9 +389,18 @@ def _check_task(report: Report, path: Path, body: dict, proj: dict, packs: dict[
             report.error(path, f"pack {pack['id']} needs task variable {vname!r}")
 
 
-def _check_design(report: Report, path: Path, h: dict, by_id: dict[str, Doc]) -> None:
+def _check_design(report: Report, path: Path, h: dict, by_id: dict[str, Doc], proj: dict) -> None:
     body = h["body"]
     cmp_ids = {c["id"] for c in body["components"]}
+    # Tasks are built from components, so each must name a real platform and that platform's repo.
+    for c in body["components"]:
+        plat = proj["platforms"].get(c["platform"])
+        if not plat:
+            report.error(path, f"{c['id']}: platform {c['platform']!r} isn't one of the project's "
+                               f"({', '.join(proj['platforms'])})")
+        elif c["repo"] != plat["repo"]:
+            report.error(path, f"{c['id']}: repo {c['repo']!r} isn't where platform {c['platform']} lives; use repo "
+                               f"{plat['repo']!r} and put any folder inside it in path")
     for req, cmps in body["requirement_coverage"].items():
         for c in cmps:
             if c not in cmp_ids:

@@ -72,6 +72,8 @@ def test_runs_to_each_gate_and_on_to_ready_for_development(ws, store, example):
     assert s.docs["task"] == ["task-001", "task-002"]
     assert [r["step"] for r in s.runs] == ["pm_spec", "pm_task_list", "architect_design", "architect_task"]
     assert store.get("design-001")["approval"]["comment"] == "looks right"
+    task_brief = p.models["architect"].seen[-1][1].content          # the task run is told each platform's checks
+    assert "already holds your research" in task_brief and "checks: build, munit, no-plaintext-secrets" in task_brief
 
 
 def test_changes_requested_sends_the_comment_back_and_the_author_revises(ws, store, example):

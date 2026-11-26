@@ -21,7 +21,7 @@ BREAKAGES = [
         "verdict 'pass' is inconsistent", id="inconsistent-verdict"),
     pytest.param(
         "examples/ridexpress-uc1/task-001.yaml", "[build, munit, no-plaintext-secrets]", "[build, munit, e2e]",
-        "required check 'e2e' isn't in pack mulesoft", id="unknown-check"),
+        "required check 'e2e' isn't in pack mulesoft; use its verification ids: build, munit", id="unknown-check"),
     pytest.param(
         "examples/ridexpress-uc1/task-001.yaml", "  pack_variables:\n    api_dir: user-sign-up-process-api\n", "",
         "pack mulesoft needs task variable 'api_dir'", id="missing-task-variable"),

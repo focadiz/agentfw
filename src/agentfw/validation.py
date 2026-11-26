@@ -380,10 +380,11 @@ def _check_task(report: Report, path: Path, body: dict, proj: dict, packs: dict[
     if not pack_doc:
         return
     pack = pack_doc.data
-    check_ids = {c["id"] for c in pack["verification"]}
+    check_ids = [c["id"] for c in pack["verification"]]
     for c in body["required_checks"]:
         if c not in check_ids:
-            report.error(path, f"required check {c!r} isn't in pack {pack['id']}")
+            report.error(path, f"required check {c!r} isn't in pack {pack['id']}; "
+                               f"use its verification ids: {', '.join(check_ids)}")
     for vname, v in pack.get("variables", {}).items():
         if v.get("scope") == "task" and vname not in body.get("pack_variables", {}) and "default" not in v:
             report.error(path, f"pack {pack['id']} needs task variable {vname!r}")

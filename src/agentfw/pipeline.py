@@ -168,7 +168,7 @@ class Pipeline:
                 return Command(goto=after, update={"docs": {**docs, step.produces: ids}})
 
             inputs = [i for t in step.inputs for i in docs.get(t, [])]
-            instructions = None
+            instructions = self._task_brief() if step.produces == "task" else None
             if to_revise:
                 doc = to_revise[0]
                 inputs.append(doc["id"])
@@ -220,6 +220,18 @@ class Pipeline:
                 interrupt({"handoff": handoff_id, "type": step.produces, "title": doc["title"],
                            "author": doc["created_by"]["actor"], "path": str(self.store.path_of(handoff_id))})
         return node
+
+    def _task_brief(self) -> str:
+        """What writing tasks needs that the design doesn't hold: each platform's repo and check ids."""
+        lines = ["The design is approved and already holds your research. Write one task per platform/PR from "
+                 "it; only look something up if a task needs a detail the design doesn't give.",
+                 "", "Platforms (a task's repo must be its platform's repo; required_checks come from its pack):"]
+        for name, plat in self.ws.projects[self.project_id].data["platforms"].items():
+            pack = self.ws.packs.get(plat["pack"])
+            checks = [c["id"] + ("" if c.get("blocking") else " (non-blocking)")
+                      for c in (pack.data.get("verification", []) if pack else [])]
+            lines.append(f"- {name}: repo {plat['repo']}, pack {plat['pack']}, checks: {', '.join(checks) or 'none'}")
+        return "\n".join(lines)
 
     def _outputs(self, htype: str, parent: str) -> list[dict]:
         return [d for d in self.store.list(type=htype)

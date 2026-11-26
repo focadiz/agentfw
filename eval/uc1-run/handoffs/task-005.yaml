@@ -1,0 +1,54 @@
+kind: handoff
+schema_version: '0.1'
+id: task-005
+type: task
+project: ridexpress
+title: 'MuleSoft: Sign-Up Experience API Endpoint (POST /user)'
+created_by:
+  actor: architect
+  run_id: run-20261126-154534-f425
+  pack: mulesoft
+created_at: '2026-11-26T15:45:49Z'
+parents:
+- design-002
+- spec-001
+- task_list-001
+status: approved
+body:
+  platform: mulesoft
+  repo: mulesoft
+  story_id: STORY-2
+  requirement_ids:
+  - REQ-2
+  component_id: CMP-2
+  description: 'Implement the ridexpress-experience-api POST /user endpoint that accepts JSON {email,
+    phone, password, firstName, lastName}, performs server-side validation matching client-side messages,
+    calls user-sign-up-process-api POST /api/signup, and returns appropriate responses: 201 {userId, verificationSent:
+    true} on success, 409 with exact duplicate email message, 503 with identity provider unavailable message
+    after retries, 400 for other validation failures.'
+  acceptance_criteria:
+  - Endpoint implemented at ridexpress-experience-api/src/main/mule/users.xml with POST /user
+  - 'Request validation: email format, phone format (with country code), password strength, firstName/lastName
+    required'
+  - 'Server-side validation error messages match client-side exactly: ''Please enter a valid email address.'',
+    ''Please enter a valid phone number with country code.'''
+  - Calls user-sign-up-process-api POST /api/signup with {email, phone, password, firstName, lastName}
+  - 'Returns 201 {userId, verificationSent: true} on success'
+  - Returns 409 with message 'This email is already registered. Please log in or use a different email.'
+    on duplicate email
+  - Returns 503 with message 'Registration service is temporarily unavailable. Please try again in a few
+    minutes.' when identity provider unavailable after retries
+  - Returns 400 with appropriate message for other validation failures
+  - MUnit tests cover all response scenarios
+  files_hint:
+  - ridexpress-experience-api/src/main/mule/users.xml
+  - ridexpress-experience-api/src/test/mule/*.xml
+  pack_variables:
+    api_dir: ridexpress-experience-api
+  required_checks:
+  - build
+  - munit
+  - no-plaintext-secrets
+  depends_on:
+  - task-004
+  attempt: 1

@@ -5,11 +5,13 @@ description: >
   Ride-hailing platform. MuleSoft API-led backend (experience / process /
   system APIs) and an iOS app that consumes the experience API.
 
-root: /Volumes/Storage/workspace/agentic-ai-program/RideXpress
-docs_root: /Volumes/Storage/workspace/agentic-ai-program/RideXpress/docs
+# Relative paths are resolved from the framework folder; ~ and $VARS work too.
+# Clone the RideXpress repos (github.com/RideXpress) next to this framework.
+root: ../RideXpress
+docs_root: ../RideXpress/docs
 # Kept in the docs repo so specs, designs and decisions are versioned
 # next to the architecture they describe.
-handoffs_dir: /Volumes/Storage/workspace/agentic-ai-program/RideXpress/docs/.framework
+handoffs_dir: ../RideXpress/docs/.framework
 
 repos:
   mulesoft:

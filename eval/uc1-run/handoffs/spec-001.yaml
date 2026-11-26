@@ -1,0 +1,119 @@
+kind: handoff
+schema_version: '0.1'
+id: spec-001
+type: spec
+project: ridexpress
+title: UC-1 User Sign Up - iOS App End-to-End
+created_by:
+  actor: pm
+  run_id: run-20261116-231107-e3ee
+created_at: '2026-11-16T23:13:07Z'
+parents:
+- idea-001
+status: approved
+body:
+  problem: New users need to create an account from the iOS app. The sign-up flow must accept registration
+    data, validate it, create the user in the identity provider and the database, send a verification
+    email with a 6-digit code, and handle edge conditions (duplicate email, invalid input, identity provider
+    unavailable, network loss, code expiration/resend limits, abandoned registration). The experience
+    API endpoint POST /user already exists as a stub and must be connected to the sign-up orchestration.
+    Square customer creation is explicitly out of scope for this slice.
+  users:
+  - New rider (client) signing up from the iOS app
+  goals:
+  - A new user can create an account from the app and receives a verification email
+  - Failures (duplicate email, bad input, identity provider down) behave as the edge-condition docs describe
+  non_goals:
+  - Driver sign-up/onboarding (UC-DRIVER-01) — separate use case with vehicle, license, insurance, background
+    check, banking steps
+  - Square customer creation for riders — called out as a separate slice in the idea constraints
+  - User login/authentication (UC-6) — separate use case for returning users
+  - Email verification code entry/validation screen — separate slice (user enters code after sign-up)
+  - Resend verification code flow — covered by edge conditions but the resend endpoint is a separate slice
+  - Background job for unverified account cleanup (30-day deactivation) — operational concern
+  - 'Network loss during sign-up (EC-7: offline form, auto-retry, resume after reconnect) — later slice;
+    docs/architecture/use-cases/sign-up-edge-conditions.md (EC-7)'
+  requirements:
+  - id: REQ-1
+    statement: The iOS app sign-up screen collects email, phone number, and password, performs client-side
+      validation, and submits the registration data.
+    priority: must
+    acceptance_criteria:
+    - App shows registration form with email, phone, password fields
+    - 'Client-side validation rejects invalid email format with message: "Please enter a valid email address."'
+    - 'Client-side validation rejects invalid phone format with message: "Please enter a valid phone number
+      with country code."'
+    - On valid input, app submits registration payload to the sign-up endpoint
+    sources:
+    - docs/architecture/use-cases/sign-up-edge-conditions.md (EC-4)
+    - mulesoft/IMPLEMENTATION_PLAN.md line 125 (UC-1 step 1)
+  - id: REQ-2
+    statement: The sign-up endpoint validates input server-side, orchestrates sign-up, and returns the
+      result to the app.
+    priority: must
+    acceptance_criteria:
+    - Endpoint accepts JSON with email, phone, password
+    - Server-side validation rejects invalid email/phone with same messages as client-side
+    - On valid input, endpoint orchestrates user creation in the identity provider and database, and sends
+      verification email
+    - Returns success with user ID and verification-sent confirmation on success
+    - Returns error with message "This email is already registered. Please log in or use a different email."
+      on duplicate email
+    - Returns error with message "Registration service is temporarily unavailable. Please try again in
+      a few minutes." when identity provider is down after retries
+    - Returns error for other validation failures
+    sources:
+    - mulesoft/IMPLEMENTATION_PLAN.md lines 125-130, 789 (POST /user flow)
+    - docs/architecture/use-cases/sign-up-edge-conditions.md (EC-3, EC-4, EC-5)
+  - id: REQ-3
+    statement: The sign-up orchestration creates a user record in the database, creates the user in the
+      identity provider (Okta) with status pending verification, and sends a welcome email with a 6-digit
+      numeric verification code.
+    priority: must
+    acceptance_criteria:
+    - Creates user record in the database
+    - Creates user in the identity provider with status pending_verification
+    - Sends welcome email with 6-digit numeric verification code
+    - Verification code has 10-minute TTL, stored in the database with expiration timestamp
+    - On identity provider error, retries up to 3 times with exponential backoff before failing
+    - No partial user record is created if identity provider creation fails (full rollback)
+    - Returns success with user ID to the sign-up endpoint
+    sources:
+    - mulesoft/IMPLEMENTATION_PLAN.md lines 969-974 (client sign-up orchestration)
+    - docs/architecture/use-cases/sign-up-edge-conditions.md (EC-1, EC-5, Verification Code Specification)
+  - id: REQ-4
+    statement: Duplicate email detection returns the exact error message and provides a "Go to Login"
+      option.
+    priority: must
+    acceptance_criteria:
+    - Before creating user, orchestration checks if email already exists in the identity provider
+    - 'If email exists, returns error with message: "This email is already registered. Please log in or
+      use a different email."'
+    - App displays this message and shows a "Go to Login" button
+    sources:
+    - docs/architecture/use-cases/sign-up-edge-conditions.md (EC-3)
+  open_questions:
+  - The idea mentions "iOS sign-up screen" but the edge conditions doc refers to "App" generically. Confirm
+    this slice covers only iOS client, or if Android/web share the same experience API contract.
+  - The idea constraints specify "Use the existing experience API contract (POST /user)" — confirm the
+    sign-up endpoint is POST /user on the experience API.
+  - The IMPLEMENTATION_PLAN.md shows POST /user on mobile-experience-api (line 125) but the driver sign-up
+    doc shows POST /drivers/signup (line 95) and the process API shows POST /signup (line 992). Confirm
+    the exact experience API endpoint path for client sign-up is POST /user as stated in the idea constraints.
+  - EC-6 (Square Customer Creation Failure) describes Square customer creation during sign-up, but the
+    idea constraints say "Square customer creation is a separate slice." Confirm Square customer creation
+    is NOT part of this slice for rider sign-up (only for driver sign-up).
+  - The verification code entry/validation (user enters the 6-digit code) is not explicitly in the idea
+    goals. Confirm this is a separate slice or should be included here.
+  - 'The sign-up process API is spelled two ways: sign-up-user-process-api in docs/architecture/use-cases/sign-up-edge-conditions.md,
+    driver-sign-up-onboarding.md, user-login-authentication.md and integration-architecture/3-mulesoft-integration-implementation.md;
+    user-sign-up-process-api in mulesoft/IMPLEMENTATION_PLAN.md (and the mulesoft project folder). Which
+    name is correct?'
+  - 'The verification email endpoint differs: docs/architecture/use-cases/sign-up-edge-conditions.md line
+    17 and driver-sign-up-onboarding.md line 29 use email-system-api POST /emails; mulesoft/IMPLEMENTATION_PLAN.md
+    lines 129 and 973 use POST /send, and its endpoint table (lines 1266-1267) lists both. Which one does
+    sign-up use?'
+approval:
+  by: focadiz
+  at: '2026-11-24T18:29:22Z'
+  decision: approved

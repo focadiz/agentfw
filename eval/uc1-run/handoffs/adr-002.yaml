@@ -1,0 +1,56 @@
+kind: handoff
+schema_version: '0.1'
+id: adr-002
+type: adr
+project: ridexpress
+title: 'ADR-002: Email system API endpoint for verification emails'
+created_by:
+  actor: architect
+  run_id: run-20261124-182928-a446
+  pack: mulesoft
+created_at: '2026-11-24T18:30:12Z'
+parents:
+- spec-001
+- task_list-001
+status: approved
+body:
+  context: The sign-up orchestration needs to send a welcome email with a 6-digit verification code. The
+    edge conditions doc references email-system-api POST /emails, while IMPLEMENTATION_PLAN.md and the
+    existing email-system-api implementation use POST /send. The email-system-api currently has a stub
+    implementation at POST /api/send that returns a mock response.
+  alternatives:
+  - option: Use POST /send (existing endpoint in email-system-api)
+    pros:
+    - Already implemented in email-system-api
+    - Matches IMPLEMENTATION_PLAN.md lines 129 and 973
+    - Simpler - no new endpoint needed
+    cons:
+    - Edge conditions doc says POST /emails
+    - May need to extend payload for verification code
+    score: 8
+  - option: Add POST /emails endpoint to email-system-api
+    pros:
+    - Matches edge conditions doc exactly
+    - Can have verification-code-specific payload
+    cons:
+    - Duplicate functionality with POST /send
+    - More endpoints to maintain
+    - Existing code uses POST /send
+    score: 5
+  - option: Use POST /send but extend payload to include verification code and template
+    pros:
+    - Single email endpoint
+    - Flexible for different email types
+    - Matches existing implementation
+    cons:
+    - Payload structure needs to be defined
+    - Edge conditions doc reference becomes outdated
+    score: 7
+  decision: Use POST /send endpoint on email-system-api with extended payload that includes template field
+    (e.g., 'welcome_verification') and verification code data. The email-system-api will be enhanced to
+    support templates and generate/store the 6-digit code with 10-minute TTL in the database. This aligns
+    with the existing implementation and IMPLEMENTATION_PLAN.md.
+  consequences:
+  - email-system-api needs enhancement to support email templates and verification code generation
+  - Verification code storage requires database schema addition (verification_codes table)
+  - Edge conditions doc reference to POST /emails will be updated or treated as legacy reference

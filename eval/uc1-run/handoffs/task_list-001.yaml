@@ -1,0 +1,49 @@
+kind: handoff
+schema_version: '0.1'
+id: task_list-001
+type: task_list
+project: ridexpress
+title: UC-1 User Sign Up - iOS App End-to-End Task List
+created_by:
+  actor: pm
+  run_id: run-20261124-182922-ce6d
+created_at: '2026-11-24T18:29:27Z'
+parents:
+- spec-001
+status: approved
+body:
+  stories:
+  - id: STORY-1
+    title: Backend sign-up orchestration
+    description: Implement the sign-up orchestration that creates a user record in the database, creates
+      the user in the identity provider (Okta) with status pending_verification, sends a welcome email
+      with a 6-digit numeric verification code (10-minute TTL), handles duplicate email detection with
+      the exact error message, retries identity provider creation up to 3 times with exponential backoff,
+      and rolls back on failure.
+    requirement_ids:
+    - REQ-3
+    - REQ-4
+    depends_on: []
+  - id: STORY-2
+    title: Sign-up experience API endpoint (POST /user)
+    description: Implement the experience API endpoint POST /user that accepts JSON with email, phone,
+      password; performs server-side validation with the same messages as client-side; calls the sign-up
+      orchestration; returns success with user ID and verification-sent confirmation; returns the exact
+      duplicate email error message; returns the identity provider unavailable error message after retries;
+      returns errors for other validation failures.
+    requirement_ids:
+    - REQ-2
+    depends_on:
+    - STORY-1
+  - id: STORY-3
+    title: iOS app sign-up screen
+    description: Build the iOS sign-up screen with email, phone, and password fields; implement client-side
+      validation that rejects invalid email format with message "Please enter a valid email address."
+      and invalid phone format with message "Please enter a valid phone number with country code."; on
+      valid input, submit registration payload to the sign-up endpoint; display the duplicate email error
+      with a "Go to Login" button; display the identity provider unavailable error; display other validation
+      errors.
+    requirement_ids:
+    - REQ-1
+    depends_on:
+    - STORY-2

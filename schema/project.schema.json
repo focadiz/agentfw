@@ -13,7 +13,7 @@
     "description": { "type": "string" },
 
     "root": {
-      "description": "Absolute path to the folder holding the project's repos. Available as ${project.root}.",
+      "description": "Folder holding the project's repos: absolute, ~, $VARS, or relative to the framework root. Available as ${project.root}.",
       "type": "string"
     },
     "docs_root": {

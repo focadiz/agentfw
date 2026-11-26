@@ -1,0 +1,44 @@
+kind: handoff
+schema_version: '0.1'
+id: task-003
+type: task
+project: ridexpress
+title: 'MuleSoft: Email System API - Define RAML Contract'
+created_by:
+  actor: architect
+  run_id: run-20261126-154534-f425
+  pack: mulesoft
+created_at: '2026-11-26T15:45:44Z'
+parents:
+- design-002
+- spec-001
+- task_list-001
+status: approved
+body:
+  platform: mulesoft
+  repo: mulesoft
+  story_id: STORY-1
+  requirement_ids:
+  - REQ-3
+  component_id: CMP-6
+  description: Define the RAML contract for Email System API with POST /send for sending welcome verification
+    email. The contract must specify request {to, subject, template:'welcome_verification', data:{firstName,
+    verificationCode, expiryMinutes:10}} and response 200 {status, messageId}. The API uses a pre-generated
+    code from the process API.
+  acceptance_criteria:
+  - RAML file created/updated at mulesoft/design-center/email-system-api/email-system-api.raml
+  - POST /send endpoint defined with request body {to, subject, template, data} and 200 {status, messageId}
+    response
+  - 'Template ''welcome_verification'' documented with required data fields: firstName, verificationCode,
+    expiryMinutes'
+  - Error responses documented for email sending failures
+  - RAML validates without errors
+  files_hint:
+  - mulesoft/design-center/email-system-api/email-system-api.raml
+  pack_variables:
+    api_dir: email-system-api
+  required_checks:
+  - build
+  - no-plaintext-secrets
+  depends_on: []
+  attempt: 1

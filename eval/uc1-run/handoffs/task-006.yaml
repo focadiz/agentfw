@@ -1,0 +1,54 @@
+kind: handoff
+schema_version: '0.1'
+id: task-006
+type: task
+project: ridexpress
+title: 'iOS: Sign-Up Screen Implementation'
+created_by:
+  actor: architect
+  run_id: run-20261126-154534-f425
+  pack: mulesoft
+created_at: '2026-11-26T15:45:51Z'
+parents:
+- design-002
+- spec-001
+- task_list-001
+status: approved
+body:
+  platform: ios
+  repo: mobile-app
+  story_id: STORY-3
+  requirement_ids:
+  - REQ-1
+  component_id: CMP-1
+  description: 'Build the iOS sign-up screen with email, phone, password, first name, and last name fields.
+    Implement client-side validation that rejects invalid email format with message ''Please enter a valid
+    email address.'' and invalid phone format with message ''Please enter a valid phone number with country
+    code.''. On valid input, submit registration payload to POST /user endpoint. Display server errors:
+    duplicate email error with ''Go to Login'' button, identity provider unavailable error, and other
+    validation errors.'
+  acceptance_criteria:
+  - Sign-up screen implemented at RideXpress/Features/SignUp with fields for email, phone, password, firstName,
+    lastName
+  - Client-side email validation shows 'Please enter a valid email address.' for invalid format
+  - Client-side phone validation shows 'Please enter a valid phone number with country code.' for invalid
+    format
+  - On valid input, submits POST /user with JSON {email, phone, password, firstName, lastName}
+  - Displays duplicate email error 'This email is already registered. Please log in or use a different
+    email.' with 'Go to Login' button that navigates to login screen
+  - Displays identity provider unavailable error 'Registration service is temporarily unavailable. Please
+    try again in a few minutes.'
+  - Displays other validation error messages from server
+  - Unit tests cover validation logic and error display
+  files_hint:
+  - RideXpress/Features/SignUp/SignUpView.swift
+  - RideXpress/Features/SignUp/SignUpViewModel.swift
+  - RideXpress/Features/SignUp/SignUpViewModelTests.swift
+  pack_variables: {}
+  required_checks:
+  - build
+  - unit-tests
+  - no-hardcoded-secrets
+  depends_on:
+  - task-005
+  attempt: 1

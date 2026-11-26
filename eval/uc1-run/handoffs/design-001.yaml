@@ -1,0 +1,170 @@
+kind: handoff
+schema_version: '0.1'
+id: design-001
+type: design
+project: ridexpress
+title: UC-1 User Sign Up - iOS App End-to-End Design
+created_by:
+  actor: architect
+  run_id: run-20261124-182928-a446
+  pack: mulesoft
+created_at: '2026-11-24T18:30:19Z'
+parents:
+- spec-001
+- task_list-001
+status: superseded
+body:
+  summary: 'End-to-end design for rider sign-up from the iOS app. The flow: iOS app collects email, phone,
+    password → client-side validation → POST /user on ridexpress-experience-api → server-side validation
+    → user-sign-up-process-api orchestrates Okta user creation (pending_verification), database record
+    creation, and welcome email with 6-digit verification code (10-min TTL) via email-system-api. Duplicate
+    email detection checks Okta first. Okta failures retry 3× with exponential backoff. Full rollback
+    on Okta failure after retries.'
+  components:
+  - id: CMP-1
+    name: iOS Sign-Up Screen
+    platform: ios
+    repo: mobile-app
+    path: RideXpress/Features/SignUp
+    layer: view
+    responsibility: Collect email, phone, password; client-side validation with exact error messages;
+      submit to POST /user; display server errors including duplicate email with 'Go to Login' button
+      and identity provider unavailable message.
+    status: new
+  - id: CMP-2
+    name: Sign-Up Experience API Endpoint (POST /user)
+    platform: mulesoft
+    repo: ridexpress-experience-api
+    path: src/main/mule/users.xml
+    layer: experience
+    responsibility: Accept JSON {email, phone, password}; server-side validation matching client messages;
+      call user-sign-up-process-api POST /api/signup; return 201 with userId and verificationSent on success;
+      return 409 with exact duplicate email message; return 503 with identity provider unavailable message
+      after retries; return 400 for other validation failures.
+    status: change
+  - id: CMP-3
+    name: User Sign-Up Process API
+    platform: mulesoft
+    repo: user-sign-up-process-api
+    path: src/main/mule/user-sign-up-process-api.xml
+    layer: process
+    responsibility: 'Orchestrate sign-up: 1) Check duplicate email via Okta GET /users?email={email};
+      2) Create user in Okta with status pending_verification (POST /api/users); 3) Create user record
+      in database (POST /users); 4) Generate 6-digit code, store in DB with 10-min TTL, send welcome email
+      via email-system-api POST /send with template; retry Okta creation 3× with exponential backoff;
+      full rollback (delete Okta user, delete DB record) on failure after retries; return userId to experience
+      API.'
+    status: change
+  - id: CMP-4
+    name: Okta System API - User Creation
+    platform: mulesoft
+    repo: okta-system-api
+    path: src/main/mule/okta-system-api.xml
+    layer: system
+    responsibility: POST /api/users creates Okta user with profile (email, firstName, lastName, login=email)
+      and temporary password; return Okta user ID. GET /users?email={email} for duplicate check. Error
+      handling for Okta connectivity.
+    status: change
+  - id: CMP-5
+    name: Database System API - User Creation
+    platform: mulesoft
+    repo: database-system-api
+    path: src/main/mule/users.xml
+    layer: system
+    responsibility: POST /users inserts user record (user_name, email, mobile, first_name, last_name,
+      user_type=PASSENGER); return user_id. Handle duplicate email constraint (409). Verification codes
+      table for 6-digit code storage with expiration.
+    status: change
+  - id: CMP-6
+    name: Email System API - Verification Email
+    platform: mulesoft
+    repo: email-system-api
+    path: src/main/mule/email-system-api.xml
+    layer: system
+    responsibility: POST /send accepts {to, subject, template, data} where template='welcome_verification'
+      includes verificationCode and expiryMinutes; generates 6-digit code if not provided, stores in DB
+      with 10-min TTL, sends email via Gmail connector; returns {status, messageId}.
+    status: change
+  interfaces:
+  - from: CMP-1
+    to: CMP-2
+    protocol: HTTPS
+    operation: POST /user
+    contract: 'ridexpress-experience-api RAML (to be defined) - request: {email, phone, password}, responses:
+      201 {userId, verificationSent}, 400 {message}, 409 {message}, 503 {message}'
+  - from: CMP-2
+    to: CMP-3
+    protocol: HTTP
+    operation: POST /api/signup
+    contract: 'user-sign-up-process-api RAML - request: {email, phone, password, firstName, lastName},
+      responses: 201 {userId}, 409 {message}, 503 {message}, 400 {message}'
+  - from: CMP-3
+    to: CMP-4
+    protocol: HTTP
+    operation: GET /users?email={email} then POST /api/users
+    contract: 'okta-system-api RAML - GET returns 200 {exists: true} or 404; POST request: {email, firstName,
+      lastName, password}, response: 201 {id}'
+  - from: CMP-3
+    to: CMP-5
+    protocol: HTTP
+    operation: POST /users
+    contract: 'database-system-api RAML - request: {userName, email, mobile, firstName, lastName, userType},
+      response: 201 {id, userId}'
+  - from: CMP-3
+    to: CMP-6
+    protocol: HTTP
+    operation: POST /send
+    contract: 'email-system-api RAML - request: {to, subject, template: ''welcome_verification'', data:
+      {firstName, verificationCode, expiryMinutes: 10}}, response: 200 {status, messageId}'
+  requirement_coverage:
+    REQ-1:
+    - CMP-1
+    REQ-2:
+    - CMP-2
+    REQ-3:
+    - CMP-3
+    - CMP-4
+    - CMP-5
+    - CMP-6
+    REQ-4:
+    - CMP-1
+    - CMP-2
+    - CMP-3
+    - CMP-4
+  decisions:
+  - adr-001
+  - adr-002
+  risks:
+  - 'Open question: Confirm experience API endpoint is POST /user (not POST /signup) - IMPLEMENTATION_PLAN.md
+    line 125 says POST /user on mobile-experience-api but users.xml has post:\user:router calling user-sign-up-process-api
+    POST /signup. Need to align.'
+  - 'Open question: Verify process API name - user-sign-up-process-api (folder) vs sign-up-user-process-api
+    (docs). Using user-sign-up-process-api as per folder name.'
+  - 'Open question: Square customer creation explicitly out of scope per spec, but EC-6 describes it.
+    Confirmed not in this slice.'
+  - Verification code entry/validation screen is separate slice per spec non-goals.
+  - Resend verification code endpoint is separate slice per spec non-goals.
+  - Network loss during sign-up (EC-7) is later slice per spec non-goals.
+  - Background job for unverified account cleanup (30-day) is operational concern, not in this slice.
+approval:
+  by: focadiz
+  at: '2026-11-24T18:34:08Z'
+  decision: changes_requested
+  comment: '1. Every component''s repo must be a project repo. The MuleSoft APIs are folders inside repo
+    ''mulesoft'': use repo ''mulesoft'' and put the folder in path (e.g. user-sign-up-process-api/src/main/mule/...).
+    The framework now rejects other repo values.
+
+    2. Give the 6-digit verification code one owner: either the process API or the email API generates
+    and stores it, not both.
+
+    3. Okta and the database need first and last name, but the sign-up screen only collects email, phone
+    and password. Collect first and last name on the screen and carry them through every interface, and
+    record in risks that the spec''s REQ-1 leaves name out.
+
+    4. adr-001 says an email failure isn''t rolled back because the user can resend, but resend is a non-goal
+    of this slice and REQ-3 says no partial user record remains. Write a new ADR that replaces adr-001
+    with a rollback rule consistent with REQ-3, and list it in decisions instead of adr-001 (adr-001 can''t
+    be edited).
+
+    5. Don''t invent contracts: the Okta lookup response ''200 {exists: true} or 404'' has no source.
+    Cite the RAML or code a contract comes from, or mark it as to be defined.'

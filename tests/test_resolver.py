@@ -115,3 +115,15 @@ def test_project_model_override(ws_copy):
     edit("projects/ridexpress.yaml", "  - id: pm\n", "  - id: pm\n    model_id: cheap/model\n")
     r = resolve(load_workspace(root), "ridexpress", "pm")
     assert r.model["id"] == "cheap/model"
+
+
+def test_project_paths_may_be_relative_home_or_env(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    from agentfw.config import _resolve_project_paths
+
+    monkeypatch.setenv("RX", str(tmp_path / "rx"))
+    data = {"root": "../RideXpress", "docs_root": "$RX/docs", "handoffs_dir": "~/handoffs"}
+    _resolve_project_paths(data, tmp_path / "framework")
+    assert data == {"root": str((tmp_path / "RideXpress").resolve()), "docs_root": str(tmp_path / "rx" / "docs"),
+                    "handoffs_dir": str(Path.home() / "handoffs")}

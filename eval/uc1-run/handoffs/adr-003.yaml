@@ -1,0 +1,66 @@
+kind: handoff
+schema_version: '0.1'
+id: adr-003
+type: adr
+project: ridexpress
+title: 'ADR-003: Sign-up orchestration rollback strategy with full atomicity'
+created_by:
+  actor: architect
+  run_id: run-20261124-183408-4210
+  pack: mulesoft
+created_at: '2026-11-24T18:34:53Z'
+parents:
+- spec-001
+- task_list-001
+status: approved
+body:
+  context: 'The sign-up orchestration must create a user in the database, create the user in Okta with
+    status pending_verification, and send a welcome email with a 6-digit verification code. REQ-3 states:
+    ''No partial user record is created if identity provider creation fails (full rollback)''. The previous
+    ADR-001 decided that email sending failure is non-blocking because the user can resend, but resend
+    is explicitly a non-goal of this slice (spec non-goals). Therefore, email failure must also trigger
+    full rollback to satisfy REQ-3.'
+  alternatives:
+  - option: Okta-first, then database, then email — full rollback on any failure
+    pros:
+    - Okta is the identity source of truth
+    - No compensating delete needed if Okta fails (first step)
+    - Database only gets record after identity confirmed
+    - Email failure triggers rollback of both Okta and DB, satisfying REQ-3
+    cons:
+    - If database insert fails after Okta succeeds, must compensate by deleting Okta user
+    - If email fails after DB succeeds, must compensate by deleting both DB record and Okta user
+    - More compensation logic than database-first approach
+    score: 8
+  - option: Database-first with compensating deletes on Okta or email failure (current code)
+    pros:
+    - Simple to understand
+    - Database is the system of record for user data
+    cons:
+    - Requires compensating transaction (DELETE) if Okta fails
+    - Race condition if delete fails
+    - Database record exists briefly in inconsistent state
+    - Email failure would leave partial record (violates REQ-3)
+    score: 4
+  - option: Saga pattern with explicit compensation steps and persistent state
+    pros:
+    - Clear compensation logic for each step
+    - Handles partial failures gracefully
+    - Auditable rollback trail
+    cons:
+    - More complex implementation
+    - Overkill for 3-step orchestration
+    - Requires saga state persistence
+    score: 5
+  decision: 'Use Okta-first approach: 1) Create user in Okta with status pending_verification; 2) Create
+    database record; 3) Generate 6-digit verification code, store in database with 10-min TTL; 4) Send
+    welcome email via email-system-api. If ANY step fails after Okta creation, compensate by deleting
+    the Okta user (and database record if created). This makes Okta the authoritative identity store and
+    ensures no partial user record remains on any failure, satisfying REQ-3.'
+  consequences:
+  - Okta user creation becomes the first step in the orchestration
+  - Need to add Okta user deletion as compensation in user-sign-up-process-api
+  - Database-system-api POST /users must handle idempotency (duplicate email returns 409)
+  - Verification code generation and storage moves to the process API (single owner)
+  - Email-system-api receives the pre-generated code in the payload; it does not generate or store codes
+  - All three steps (Okta, DB, email) are atomic — failure at any point triggers full rollback

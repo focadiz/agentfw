@@ -1,0 +1,61 @@
+kind: handoff
+schema_version: '0.1'
+id: adr-001
+type: adr
+project: ridexpress
+title: 'ADR-001: Sign-up orchestration ownership and rollback strategy'
+created_by:
+  actor: architect
+  run_id: run-20261124-182928-a446
+  pack: mulesoft
+created_at: '2026-11-24T18:30:08Z'
+parents:
+- spec-001
+- task_list-001
+status: approved
+body:
+  context: 'The sign-up orchestration must create a user in the database, create the user in Okta with
+    status pending_verification, and send a welcome email with a 6-digit verification code. If Okta creation
+    fails after retries, no partial user record should remain (full rollback). The existing user-sign-up-process-api
+    creates the database record first, then Okta, then sends email. This order creates a rollback challenge:
+    if Okta fails, the database record must be deleted.'
+  alternatives:
+  - option: Database-first with compensating delete on Okta failure (current approach)
+    pros:
+    - Simple to understand
+    - Database is the system of record for user data
+    - Email sent only after both succeed
+    cons:
+    - Requires compensating transaction (DELETE) if Okta fails
+    - Race condition if delete fails
+    - Database record exists briefly in inconsistent state
+    score: 6
+  - option: Okta-first, then database, then email
+    pros:
+    - Okta is the identity source of truth
+    - No compensating delete needed if Okta fails
+    - Database only gets record after identity confirmed
+    cons:
+    - If database insert fails after Okta succeeds, orphaned Okta user
+    - Need compensating delete in Okta (harder than DB delete)
+    - Email still sent last
+    score: 7
+  - option: Saga pattern with explicit compensation steps
+    pros:
+    - Clear compensation logic for each step
+    - Handles partial failures gracefully
+    - Auditable rollback trail
+    cons:
+    - More complex implementation
+    - Overkill for 3-step orchestration
+    - Requires saga state persistence
+    score: 5
+  decision: 'Use Okta-first approach: create user in Okta with status pending_verification, then create
+    database record, then send email. If database insert fails, compensate by deleting Okta user. If email
+    fails, log and alert but don''t roll back (user can resend). This makes Okta the authoritative identity
+    store and avoids database records for non-existent identities.'
+  consequences:
+  - Okta user creation becomes the first step in the orchestration
+  - Need to add Okta user deletion as compensation in user-sign-up-process-api
+  - Database-system-api POST /users must handle idempotency (duplicate email returns 409)
+  - Email sending failure is non-blocking; verification code can be resent later

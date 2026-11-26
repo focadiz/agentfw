@@ -1,0 +1,43 @@
+kind: handoff
+schema_version: '0.1'
+id: task-002
+type: task
+project: ridexpress
+title: 'MuleSoft: Database System API - Define RAML Contract'
+created_by:
+  actor: architect
+  run_id: run-20261126-154534-f425
+  pack: mulesoft
+created_at: '2026-11-26T15:45:43Z'
+parents:
+- design-002
+- spec-001
+- task_list-001
+status: approved
+body:
+  platform: mulesoft
+  repo: mulesoft
+  story_id: STORY-1
+  requirement_ids:
+  - REQ-3
+  component_id: CMP-5
+  description: Define the RAML contract for Database System API with POST /users for user record creation
+    and verification code storage. The contract must specify request {userName, email, mobile, firstName,
+    lastName, userType} and response 201 {id, userId}, plus verification codes table operations with 6-digit
+    code and expiration timestamp.
+  acceptance_criteria:
+  - RAML file created/updated at mulesoft/design-center/database-system-api/database-system-api.raml
+  - POST /users endpoint defined with request {userName, email, mobile, firstName, lastName, userType}
+    and 201 {id, userId} response
+  - Verification codes table operations defined (store 6-digit code with 10-min TTL, retrieve by email/userId)
+  - 409 response for duplicate email constraint documented
+  - RAML validates without errors
+  files_hint:
+  - mulesoft/design-center/database-system-api/database-system-api.raml
+  pack_variables:
+    api_dir: database-system-api
+  required_checks:
+  - build
+  - no-plaintext-secrets
+  depends_on: []
+  attempt: 1

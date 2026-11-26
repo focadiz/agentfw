@@ -1,6 +1,18 @@
-# Agent Framework (draft v0.1)
+# agentfw: a team of role agents for routine software delivery
 
-A team of role agents (PM, Architect, Developer, QA, DevOps) that builds software on any platform through plug-in **skill packs**. Roles define *what* an agent does; packs define *how* on a given platform (MuleSoft, iOS, ...).
+Capstone project for the CMU Agentic AI program (Personal Assistant track).
+
+**The problem.** On a small team one person plays every role: turning use-case documents into user stories, checking them against the APIs that already exist, designing changes across several repositories, then writing, testing and deploying the code. The work is repetitive and document-heavy, and it goes wrong in small ways (a requirement that contradicts the docs, an API named two ways).
+
+**The system.** A team of role agents (PM, Architect, Developer, QA, DevOps) that takes a feature idea to development-ready tasks, and next to a tested pull request, with a human approving at each gate. Platform knowledge comes from plug-in **skill packs**: roles define *what* an agent does; packs define *how* on a given platform (MuleSoft, iOS, ...). The first project is [RideXpress](https://github.com/RideXpress), a fictional ride-hailing system with public repositories (docs, MuleSoft APIs, Salesforce, Postgres, iOS app).
+
+**Status.** The idea → spec → task list → design → tasks pipeline runs end to end on real models with human approval gates (M1–M5). Developer ⇄ QA (M6) and DevOps are designed and configured but not run yet.
+
+**Review it quickly**
+- A real run, start to finish: [`eval/uc1-run/`](eval/uc1-run/) holds every document the agents wrote for UC-1 User Sign Up (spec, ADRs, both designs with the human's revision comment, six tasks) and transcripts of the task step before and after a fix.
+- Evaluation: [`eval/results.md`](eval/results.md), generated from the audit logs by [`eval/summarize_runs.py`](eval/summarize_runs.py): every run, rejected documents and why, guardrail denials, tool use and the human decisions.
+- Hand-written reference documents for the same use case, through to a PR and test report: [`examples/ridexpress-uc1/`](examples/ridexpress-uc1/).
+- Tests: `.venv/bin/pytest` (offline, scripted models, no API key needed).
 
 This folder holds the configuration layer (schemas, role and pack configs, the tool registry, prompts, a worked example) and the `agentfw` Python package. Done so far:
 - **M1:** config loading, the resolver that merges role + pack + project, validation, the `fw` CLI.
@@ -13,7 +25,13 @@ Developer ⇄ QA on a real MuleSoft task comes next.
 
 ## Setup
 
-Requires Python 3.11+ (LangChain 1.x needs 3.10+; macOS's built-in 3.9 is too old).
+Requires Python 3.11+ (LangChain 1.x needs 3.10+; macOS's built-in 3.9 is too old). The tests and `fw validate` need nothing else. To run agents on RideXpress, clone its public repos next to this folder (`projects/ridexpress.yaml` points at `../RideXpress`) and add an OpenRouter key:
+
+```bash
+mkdir ../RideXpress && cd ../RideXpress
+for r in docs mulesoft mobile-app salesforce postgres; do git clone https://github.com/RideXpress/$r; done
+cd -
+```
 
 ```bash
 python3.13 -m venv .venv
@@ -198,6 +216,16 @@ idea → pm: spec → ⏸ approve spec → pm: task_list → architect: design (
 - **Pausing survives between commands.** Checkpoints are kept in `~/.agentfw/pipelines/<project>.sqlite`, one thread per idea and handoffs folder. If a step fails (no output, a missing model id), fix the cause and run `fw pipeline` again: it continues from the last checkpoint.
 - `fw pipeline <project> <idea> --status` shows the runs so far (stop reason, outputs, calls, tokens, questions) and what it's waiting on, without running anything.
 
+## Evaluation
+
+`eval/summarize_runs.py` counts everything from the audit logs and handoff documents; no numbers are estimated:
+
+```bash
+.venv/bin/python eval/summarize_runs.py ridexpress --handoffs-dir eval/uc1-run/handoffs
+```
+
+What it measures: per run, the stop reason, model calls, tokens and documents written; documents the code checks rejected, and why; permission-guard denials; tool use per role; and the human's gate decisions. The main findings so far are in [`eval/results.md`](eval/results.md). Checks enforced in code changed behavior where prompt rules didn't: the spec check removed design details from requirements, and giving the Architect the platforms' real check ids took the task step from 0 tasks in 402,697 tokens to 6 tasks in 74,505.
+
 ## Validate
 
 ```bash
@@ -218,7 +246,8 @@ It checks every YAML file against its schema, then the cross-references between 
 ## Not built yet
 
 - External documentation indexes (`vector_index` sources) and `url` sources
-- Remaining built-in tools: `git.*`, `handoff.*`, `human.ask`, `web.fetch` (M4–M6), and the GitHub MCP connection (M6). `fw tools` lists what's still unavailable for a role
+- Remaining built-in tools: `git.*` and `web.fetch`, and the GitHub MCP connection (M6). `fw tools` lists what's still unavailable for a role
+- GitHub Issues and a Project board as the shared status view (documents mirrored to issues; approvals from the board). The handoff files stay the validated source of truth
 - M6: Developer ⇄ QA on a real MuleSoft task (needs `git.*` and the GitHub MCP tools)
 - Salesforce pack (the Developer role already allows it; the validator warns until it exists)
 - An iOS deploy pack. TestFlight/App Store stays manual for now

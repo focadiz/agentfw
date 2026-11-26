@@ -17,7 +17,7 @@ SCHEMA_FILES = {
     "handoff": "handoff.schema.json",
 }
 # Directories never scanned for config files.
-SKIP_DIRS = {".venv", ".work", ".git", "node_modules", "__pycache__", ".pytest_cache"}
+SKIP_DIRS = {".venv", ".work", "eval", ".git", "node_modules", "__pycache__", ".pytest_cache"}
 
 
 @dataclass(frozen=True)
@@ -101,8 +101,21 @@ def load_workspace(root: Path) -> Workspace:
         if kind not in docs:
             errors.append((path, f"unknown or missing kind: {kind!r}"))
             continue
+        if kind == "project":
+            _resolve_project_paths(data, root)
         docs[kind].append(Doc(path, data))
     return Workspace(root, schemas, Registry().with_resources(resources), docs, errors)
+
+
+PROJECT_PATHS = ("root", "docs_root", "handoffs_dir")
+
+
+def _resolve_project_paths(data: dict, root: Path) -> None:
+    """Project folders may use ~, $VARS, or a path relative to the framework root; store them absolute."""
+    for key in PROJECT_PATHS:
+        if isinstance(data.get(key), str):
+            p = Path(os.path.expanduser(os.path.expandvars(data[key])))
+            data[key] = str(p if p.is_absolute() else (root / p).resolve())
 
 
 def load_dir(directory: Path, kind: str) -> list[Doc]:

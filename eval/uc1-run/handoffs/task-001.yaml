@@ -1,0 +1,44 @@
+kind: handoff
+schema_version: '0.1'
+id: task-001
+type: task
+project: ridexpress
+title: 'MuleSoft: Okta System API - Define RAML Contract'
+created_by:
+  actor: architect
+  run_id: run-20261126-154534-f425
+  pack: mulesoft
+created_at: '2026-11-26T15:45:41Z'
+parents:
+- design-002
+- spec-001
+- task_list-001
+status: approved
+body:
+  platform: mulesoft
+  repo: mulesoft
+  story_id: STORY-1
+  requirement_ids:
+  - REQ-3
+  - REQ-4
+  component_id: CMP-4
+  description: 'Define the RAML contract for Okta System API with GET /users?email={email} for duplicate
+    email check and POST /api/users for user creation in Okta with status pending_verification. The contract
+    must specify request/response schemas matching the design: GET returns 200 {exists: true} or 404;
+    POST request {email, firstName, lastName, password}, response 201 {id}.'
+  acceptance_criteria:
+  - RAML file created/updated at mulesoft/design-center/okta-system-api/okta-system-api.raml
+  - 'GET /users?email={email} endpoint defined with 200 {exists: boolean} and 404 responses'
+  - POST /api/users endpoint defined with request body {email, firstName, lastName, password} and 201
+    {id} response
+  - Error responses documented for Okta connectivity failures
+  - RAML validates without errors
+  files_hint:
+  - mulesoft/design-center/okta-system-api/okta-system-api.raml
+  pack_variables:
+    api_dir: okta-system-api
+  required_checks:
+  - build
+  - no-plaintext-secrets
+  depends_on: []
+  attempt: 1

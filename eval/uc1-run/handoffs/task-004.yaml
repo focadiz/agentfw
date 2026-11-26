@@ -1,0 +1,59 @@
+kind: handoff
+schema_version: '0.1'
+id: task-004
+type: task
+project: ridexpress
+title: 'MuleSoft: User Sign-Up Process API - Implement Orchestration'
+created_by:
+  actor: architect
+  run_id: run-20261126-154534-f425
+  pack: mulesoft
+created_at: '2026-11-26T15:45:47Z'
+parents:
+- design-002
+- spec-001
+- task_list-001
+status: approved
+body:
+  platform: mulesoft
+  repo: mulesoft
+  story_id: STORY-1
+  requirement_ids:
+  - REQ-3
+  - REQ-4
+  component_id: CMP-3
+  description: 'Implement the user-sign-up-process-api orchestration flow: 1) Check duplicate email via
+    Okta System API GET /users?email={email}; 2) Create user in Okta via POST /api/users with status pending_verification;
+    3) Create user record in Database System API POST /users; 4) Generate 6-digit verification code, store
+    in DB with 10-min TTL; 5) Send welcome email via Email System API POST /send with pre-generated code.
+    Implement retry logic (3x exponential backoff) for Okta creation. Implement full rollback (delete
+    Okta user, delete DB record) on ANY failure after Okta creation. Return userId to caller.'
+  acceptance_criteria:
+  - Flow implemented at user-sign-up-process-api/src/main/mule/user-sign-up-process-api.xml
+  - Duplicate email check calls Okta System API GET /users?email={email} and returns 409 with exact message
+    if exists
+  - Okta user creation calls POST /api/users with profile (email, firstName, lastName, login=email) and
+    temporary password
+  - Database user creation calls POST /users with userName, email, mobile, firstName, lastName, userType=PASSENGER
+  - 6-digit numeric verification code generated and stored in DB with 10-minute expiration
+  - Welcome email sent via Email System API POST /send with template='welcome_verification' and pre-generated
+    code
+  - Okta creation retries up to 3 times with exponential backoff on connectivity errors
+  - 'Full rollback on any failure after Okta creation: DELETE Okta user, DELETE DB record'
+  - Returns 201 {userId} on success, 409 for duplicate email, 503 for identity provider unavailable after
+    retries, 400 for validation errors
+  - MUnit tests cover success, duplicate email, Okta failure with retry, rollback scenarios
+  files_hint:
+  - user-sign-up-process-api/src/main/mule/user-sign-up-process-api.xml
+  - user-sign-up-process-api/src/test/mule/*.xml
+  pack_variables:
+    api_dir: user-sign-up-process-api
+  required_checks:
+  - build
+  - munit
+  - no-plaintext-secrets
+  depends_on:
+  - task-001
+  - task-002
+  - task-003
+  attempt: 1
